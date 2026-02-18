@@ -7,14 +7,14 @@ struct IMUData;
 
 // ================= ESP32-C3 PINOUT =================
 // You can change if needed
-#define PIN_SPI_SCK D9
-#define PIN_SPI_MISO D10
-#define PIN_SPI_MOSI D8
-#define PIN_CS_IMU D5
-#define PIN_CS_SD D6
+#define PIN_SPI_SCK D6
+#define PIN_SPI_MISO D5
+#define PIN_SPI_MOSI D4
+#define PIN_CS_IMU D7
+#define PIN_CS_SD D8
 
-#define PIN_HX_DT D4
-#define PIN_HX_SCK D3
+#define PIN_HX_DT D10
+#define PIN_HX_SCK D9
 
 SPIClass SPIbus(FSPI);
 HX711 scale;
@@ -108,15 +108,15 @@ void readIMU(IMUData &data)
 void setupHX711()
 {
   scale.begin(PIN_HX_DT, PIN_HX_SCK);
-  scale.set_scale();
-  scale.tare();
+  Serial.println("HX711 ready - reading raw values");
 }
 
 bool readLoadCell(float &weight)
 {
   if (scale.is_ready())
   {
-    weight = scale.get_units(5);
+    long rawValue = scale.read_average(10);
+    weight = (float)rawValue;
     return true;
   }
   else
