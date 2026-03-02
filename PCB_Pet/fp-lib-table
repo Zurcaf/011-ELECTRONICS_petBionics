@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "PetBionic_PCB")(type "KiCad")(uri "$(KIPRJMOD)/PetBionic_PCB.pretty")(options "")(descr ""))
+)
