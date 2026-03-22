@@ -1,0 +1,19 @@
+# Normalize text files across operating systems
+* text=auto eol=lf
+
+# Windows-native scripts keep CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Common binaries (never diff as text)
+*.zip binary
+*.step binary
+*.stp binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.bin binary
+*.elf binary
+*.hex binary

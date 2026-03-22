@@ -1,0 +1,68 @@
+# --- OS metadata (cross-platform) ---
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100/
+.Trashes/
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# --- Editor / IDE ---
+.idea/
+*.code-workspace
+*.swp
+*.swo
+*~
+.vscode/*
+!.vscode/extensions.json
+
+# --- Logs / runtime temp ---
+*.log
+*.tmp
+*.temp
+
+# --- Generic binaries / build outputs ---
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.o
+*.obj
+*.out
+*.elf
+*.bin
+*.hex
+*.map
+*.pyc
+__pycache__/
+
+# --- Python virtual envs (if tools/scripts use Python) ---
+.venv/
+venv/
+
+# --- PlatformIO / embedded toolchains ---
+**/.pio/
+**/.pioenvs/
+**/.piolibdeps/
+
+# --- Arduino CLI / IDE build folders ---
+build/
+build-*/
+
+# --- KiCad machine-local/cache files ---
+*.kicad_prl
+fp-info-cache
+*.bak
+*-bak
+# Auto-generated KiCad backup snapshots
+hardware/pcb/backups/PetBionic_PCB-backups/PetBionic_PCB-*.zip
+
+# --- Package manager caches ---
+node_modules/
+
+# --- Keep project assets by default ---
+# (Production gerbers, BOMs, docs, source code remain tracked)
