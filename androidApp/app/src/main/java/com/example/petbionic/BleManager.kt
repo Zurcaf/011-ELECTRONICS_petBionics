@@ -13,13 +13,25 @@ import java.util.UUID
 @SuppressLint("MissingPermission")
 object BleManager {
 
-    private val SERVICE_UUID     = UUID.fromString("4fafc201-1fb5-459e-8fcc-c5c9c331914b")
-    private val CMD_CHAR_UUID    = UUID.fromString("beb5483e-36e1-4688-b7f5-ea07361b26a8")
-    private val STATUS_CHAR_UUID = UUID.fromString("beb5483e-36e1-4688-b7f5-ea07361b26a9")
+    private val SERVICE_UUIDS = listOf(
+        UUID.fromString("4fafc201-1fb5-459e-8fcc-c5c9c331914b"),
+        UUID.fromString("14f16000-9d9c-470f-9f6a-6e6fe401a001")
+    )
+    private val CMD_CHAR_UUIDS = listOf(
+        UUID.fromString("beb5483e-36e1-4688-b7f5-ea07361b26a8"),
+        UUID.fromString("14f16001-9d9c-470f-9f6a-6e6fe401a001")
+    )
+    private val STATUS_CHAR_UUIDS = listOf(
+        UUID.fromString("beb5483e-36e1-4688-b7f5-ea07361b26a9"),
+        UUID.fromString("14f16002-9d9c-470f-9f6a-6e6fe401a001")
+    )
+    private val DEVICE_NAMES = listOf("PetBionic", "petBionics")
     private val CCCD_UUID        = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
     private var gatt: BluetoothGatt? = null
     private var cmdChar: BluetoothGattCharacteristic? = null
+    private var statusCharRef: BluetoothGattCharacteristic? = null
+    private var lastStatusPayload: String? = null
     private var scanner: BluetoothLeScanner? = null
     private val handler = Handler(Looper.getMainLooper())
     private val stopScanRunnable = Runnable { stopScan() }
@@ -49,10 +61,14 @@ object BleManager {
         cmdChar = null
         isConnected = false
         scanner = adapter.bluetoothLeScanner
-        val filters = listOf(
-            ScanFilter.Builder().setServiceUuid(ParcelUuid(SERVICE_UUID)).build(),
-            ScanFilter.Builder().setDeviceName("PetBionic").build()
-        )
+        val filters = buildList {
+            SERVICE_UUIDS.forEach { uuid ->
+                add(ScanFilter.Builder().setServiceUuid(ParcelUuid(uuid)).build())
+            }
+            DEVICE_NAMES.forEach { name ->
+                add(ScanFilter.Builder().setDeviceName(name).build())
+            }
+        }
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
         handler.removeCallbacks(stopScanRunnable)
@@ -68,10 +84,20 @@ object BleManager {
     fun disconnect() {
         stopScan()
         cmdChar = null
+        statusCharRef = null
+        lastStatusPayload = null
         isConnected = false
         gatt?.disconnect()
         closeGatt()
         handler.post { onConnectionChanged?.invoke(false) }
+    }
+
+    fun getLastStatusSnapshot(): String? = lastStatusPayload
+
+    fun requestStatusRefresh() {
+        val g = gatt ?: return
+        val s = statusCharRef ?: return
+        g.readCharacteristic(s)
     }
 
     private fun closeGatt() {
@@ -109,12 +135,16 @@ object BleManager {
             if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
                 this@BleManager.gatt = gatt
                 cmdChar = null
-                gatt.requestMtu(185)
+                statusCharRef = null
+                lastStatusPayload = null
+                isConnected = true
+                handler.post { onConnectionChanged?.invoke(true) }
                 gatt.discoverServices()
                 return
             }
 
             cmdChar = null
+            statusCharRef = null
             isConnected = false
             closeGatt()
             handler.post { onConnectionChanged?.invoke(false) }
@@ -126,15 +156,34 @@ object BleManager {
                 return
             }
 
-            val service = gatt.getService(SERVICE_UUID) ?: return
-            val control = service.getCharacteristic(CMD_CHAR_UUID)
-            val statusChar = service.getCharacteristic(STATUS_CHAR_UUID)
+            val service = SERVICE_UUIDS
+                .asSequence()
+                .mapNotNull { uuid -> gatt.getService(uuid) }
+                .firstOrNull()
+            if (service == null) {
+                disconnect()
+                return
+            }
+
+            val control = CMD_CHAR_UUIDS
+                .asSequence()
+                .mapNotNull { uuid -> service.getCharacteristic(uuid) }
+                .firstOrNull()
+            val statusChar = STATUS_CHAR_UUIDS
+                .asSequence()
+                .mapNotNull { uuid -> service.getCharacteristic(uuid) }
+                .firstOrNull()
             if (control == null || statusChar == null) {
                 disconnect()
                 return
             }
 
             cmdChar = control
+            statusCharRef = statusChar
+
+            // Some devices are flaky with notifications; force one immediate read for UI bootstrap.
+            gatt.readCharacteristic(statusChar)
+
             gatt.setCharacteristicNotification(statusChar, true)
             val descriptor = statusChar.getDescriptor(CCCD_UUID)
             if (descriptor == null) {
@@ -150,11 +199,31 @@ object BleManager {
             descriptor: BluetoothGattDescriptor,
             status: Int
         ) {
-            if (descriptor.uuid == CCCD_UUID && status == BluetoothGatt.GATT_SUCCESS) {
-                isConnected = true
-                handler.post { onConnectionChanged?.invoke(true) }
-            } else if (descriptor.uuid == CCCD_UUID) {
-                disconnect()
+            if (descriptor.uuid == CCCD_UUID) {
+                if (status != BluetoothGatt.GATT_SUCCESS) {
+                    disconnect()
+                    return
+                }
+
+                statusCharRef?.let {
+                    gatt.readCharacteristic(it)
+                }
+            }
+        }
+
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int
+        ) {
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                return
+            }
+
+            if (STATUS_CHAR_UUIDS.contains(characteristic.uuid)) {
+                val payload = characteristic.value.toString(Charsets.UTF_8)
+                lastStatusPayload = payload
+                handler.post { onStatusReceived?.invoke(payload) }
             }
         }
 
@@ -168,8 +237,9 @@ object BleManager {
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic
         ) {
-            if (characteristic.uuid == STATUS_CHAR_UUID) {
+            if (STATUS_CHAR_UUIDS.contains(characteristic.uuid)) {
                 val status = characteristic.value.toString(Charsets.UTF_8)
+                lastStatusPayload = status
                 handler.post { onStatusReceived?.invoke(status) }
             }
         }

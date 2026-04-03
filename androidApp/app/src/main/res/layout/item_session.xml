@@ -20,23 +20,29 @@
             android:layout_height="wrap_content"
             android:textSize="16sp"
             android:textStyle="bold"
-            android:textColor="#1A1A2E"/>
+            android:textColor="?android:textColorPrimary"
+            android:maxLines="1"
+            android:ellipsize="end"/>
 
         <TextView
             android:id="@+id/tvDevice"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textSize="13sp"
-            android:textColor="#666666"
-            android:layout_marginTop="4dp"/>
+            android:textColor="?android:textColorSecondary"
+            android:layout_marginTop="4dp"
+            android:maxLines="1"
+            android:ellipsize="end"/>
 
         <TextView
             android:id="@+id/tvReadings"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textSize="13sp"
-            android:textColor="#9C27B0"
-            android:layout_marginTop="4dp"/>
+            android:textColor="?attr/colorPrimary"
+            android:layout_marginTop="4dp"
+            android:maxLines="2"
+            android:ellipsize="end"/>
 
     </LinearLayout>
 

@@ -1,7 +1,22 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
     <style name="Base.Theme.PetBionic" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your dark theme here. -->
-        <!-- <item name="colorPrimary">@color/my_dark_primary</item> -->
+        <item name="colorPrimary">@color/pb_primary_dark</item>
+        <item name="colorOnPrimary">@color/pb_on_primary_dark</item>
+
+        <item name="colorSecondary">@color/pb_secondary_dark</item>
+        <item name="colorOnSecondary">@color/pb_on_secondary_dark</item>
+
+        <item name="colorTertiary">@color/pb_tertiary_dark</item>
+        <item name="colorOnTertiary">@color/pb_on_tertiary_dark</item>
+
+        <item name="android:colorBackground">@color/pb_background_dark</item>
+        <item name="colorOnBackground">@color/pb_on_background_dark</item>
+
+        <item name="colorSurface">@color/pb_surface_dark</item>
+        <item name="colorOnSurface">@color/pb_on_surface_dark</item>
+        <item name="colorSurfaceVariant">@color/pb_surface_variant_dark</item>
+
+        <item name="colorError">@color/pb_error_dark</item>
+        <item name="colorOnError">@color/pb_on_error_dark</item>
     </style>
 </resources>

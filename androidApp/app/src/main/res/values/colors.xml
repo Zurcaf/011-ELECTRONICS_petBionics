@@ -2,4 +2,44 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- PetBionic brand palette (logo-inspired: cyan + graphite) -->
+    <color name="pb_primary">#58C7E5</color>
+    <color name="pb_on_primary">#102029</color>
+
+    <color name="pb_secondary">#5F6774</color>
+    <color name="pb_on_secondary">#FFFFFF</color>
+
+    <color name="pb_tertiary">#374455</color>
+    <color name="pb_on_tertiary">#FFFFFF</color>
+
+    <color name="pb_background">#F3F6F8</color>
+    <color name="pb_on_background">#1E252E</color>
+
+    <color name="pb_surface">#FFFFFF</color>
+    <color name="pb_on_surface">#1E252E</color>
+    <color name="pb_surface_variant">#E6ECF1</color>
+
+    <color name="pb_error">#C85A57</color>
+    <color name="pb_on_error">#FFFFFF</color>
+
+    <!-- Dark equivalents -->
+    <color name="pb_primary_dark">#69D2EC</color>
+    <color name="pb_on_primary_dark">#0D1A21</color>
+
+    <color name="pb_secondary_dark">#99A4B3</color>
+    <color name="pb_on_secondary_dark">#151B23</color>
+
+    <color name="pb_tertiary_dark">#8793A5</color>
+    <color name="pb_on_tertiary_dark">#121820</color>
+
+    <color name="pb_background_dark">#10151B</color>
+    <color name="pb_on_background_dark">#E7EDF3</color>
+
+    <color name="pb_surface_dark">#171E26</color>
+    <color name="pb_on_surface_dark">#E7EDF3</color>
+    <color name="pb_surface_variant_dark">#27313C</color>
+
+    <color name="pb_error_dark">#EC8A86</color>
+    <color name="pb_on_error_dark">#2C0E0C</color>
 </resources>

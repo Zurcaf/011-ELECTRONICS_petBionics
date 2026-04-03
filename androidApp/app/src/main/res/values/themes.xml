@@ -1,8 +1,23 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
     <style name="Base.Theme.PetBionic" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your light theme here. -->
-        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+        <item name="colorPrimary">@color/pb_primary</item>
+        <item name="colorOnPrimary">@color/pb_on_primary</item>
+
+        <item name="colorSecondary">@color/pb_secondary</item>
+        <item name="colorOnSecondary">@color/pb_on_secondary</item>
+
+        <item name="colorTertiary">@color/pb_tertiary</item>
+        <item name="colorOnTertiary">@color/pb_on_tertiary</item>
+
+        <item name="android:colorBackground">@color/pb_background</item>
+        <item name="colorOnBackground">@color/pb_on_background</item>
+
+        <item name="colorSurface">@color/pb_surface</item>
+        <item name="colorOnSurface">@color/pb_on_surface</item>
+        <item name="colorSurfaceVariant">@color/pb_surface_variant</item>
+
+        <item name="colorError">@color/pb_error</item>
+        <item name="colorOnError">@color/pb_on_error</item>
     </style>
 
     <style name="Theme.PetBionic" parent="Base.Theme.PetBionic" />

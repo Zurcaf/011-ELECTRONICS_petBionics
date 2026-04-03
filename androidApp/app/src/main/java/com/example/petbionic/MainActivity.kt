@@ -5,6 +5,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.widget.Button
 import android.widget.TextView
@@ -18,6 +20,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TIME_SYNC_RETRY_INTERVAL_MS = 5000L
+        private const val STATUS_REFRESH_INTERVAL_MS = 1500L
     }
 
     private lateinit var tvStatus: TextView
@@ -33,6 +36,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnHistory: Button
     private lateinit var btnWifi: Button
     private var lastTimeSyncAttemptElapsedMs: Long = 0
+    private val statusRefreshHandler = Handler(Looper.getMainLooper())
+    private val statusRefreshRunnable = object : Runnable {
+        override fun run() {
+            if (!BleManager.isConnected) {
+                return
+            }
+            BleManager.requestStatusRefresh()
+            statusRefreshHandler.postDelayed(this, STATUS_REFRESH_INTERVAL_MS)
+        }
+    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -63,15 +76,15 @@ class MainActivity : AppCompatActivity() {
         btnHistory = findViewById(R.id.btnHistory)
         btnWifi = findViewById(R.id.btnWifi)
 
-        updateUI(false)
-
         BleManager.onConnectionChanged = { connected ->
             runOnUiThread {
                 updateUI(connected)
                 if (connected) {
                     sendCurrentTimeToDevice()
+                    startStatusRefreshLoop()
                     Toast.makeText(this, "Connected to PetBionic!", Toast.LENGTH_SHORT).show()
                 } else {
+                    stopStatusRefreshLoop()
                     Toast.makeText(this, "Disconnected", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -81,6 +94,16 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 renderStatus(status)
             }
+        }
+
+        val connectedNow = BleManager.isConnected
+        updateUI(connectedNow)
+        if (connectedNow) {
+            BleManager.getLastStatusSnapshot()?.let { renderStatus(it) }
+            BleManager.requestStatusRefresh()
+            startStatusRefreshLoop()
+        } else {
+            stopStatusRefreshLoop()
         }
 
         btnConnect.setOnClickListener {
@@ -108,6 +131,27 @@ class MainActivity : AppCompatActivity() {
         btnWifi.setOnClickListener {
             showWifiDialog()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (BleManager.isConnected) {
+            startStatusRefreshLoop()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopStatusRefreshLoop()
+    }
+
+    private fun startStatusRefreshLoop() {
+        statusRefreshHandler.removeCallbacks(statusRefreshRunnable)
+        statusRefreshHandler.post(statusRefreshRunnable)
+    }
+
+    private fun stopStatusRefreshLoop() {
+        statusRefreshHandler.removeCallbacks(statusRefreshRunnable)
     }
 
     private fun updateUI(connected: Boolean) {
@@ -205,15 +249,23 @@ class MainActivity : AppCompatActivity() {
                 val json = JSONObject(jsonPayload)
                 val acq = json.optBoolean("acq", false)
                 val sd = json.optBoolean("sd", false)
-                val imu = json.optBoolean("imu", false)
-                val hx711 = json.optBoolean("hx711", false)
+                val imu = if (json.has("imu")) json.optBoolean("imu", false) else null
+                val hx711 = if (json.has("hx711")) json.optBoolean("hx711", false) else null
                 val samples = json.optLong("samples", 0)
                 val syncNeeded = json.optBoolean("time_sync_needed", false)
 
                 val state = if (acq) "Recording" else "Idle"
                 val sdState = if (sd) "OK" else "Not ready"
-                val imuState = if (imu) "OK" else "Not ready"
-                val hx711State = if (hx711) "OK" else "Not ready"
+                val imuState = when (imu) {
+                    true -> "OK"
+                    false -> "Not ready"
+                    null -> "-"
+                }
+                val hx711State = when (hx711) {
+                    true -> "OK"
+                    false -> "Not ready"
+                    null -> "-"
+                }
                 val syncState = if (syncNeeded) "Needed" else "OK"
 
                 if (syncNeeded) {
