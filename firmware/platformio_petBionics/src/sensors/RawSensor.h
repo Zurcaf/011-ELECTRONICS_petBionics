@@ -43,6 +43,8 @@ private:
   bool _hxReady;
   uint32_t _lastImuHealthCheckMs;
   uint32_t _lastHxHealthCheckMs;
+  uint8_t _imuConsecutiveMisses;
+  uint8_t _imuConsecutiveHits;
   uint8_t _hxConsecutiveMisses;
   uint8_t _hxConsecutiveHits;
   uint8_t _hxSuspiciousReads;

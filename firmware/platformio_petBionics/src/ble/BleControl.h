@@ -18,7 +18,14 @@ private:
   AppConfig &_config;
   uint32_t _lastStatusMs;
   String _statusCache;
+  AppStatus _lastStatusSnapshot;
+  AppStatus _lastPublishedStatus;
+  bool _hasPublishedStatus;
+  bool _hasStatusSnapshot;
+  String _pendingAck;
   bool tryApplyTimeCommand(const String &cmd);
+  void publishStatus(const AppStatus &status, uint32_t nowMs, bool force);
+  void acknowledgeCommand(const char *ack, uint32_t nowMs);
   uint64_t nowEpochMs(uint32_t nowMs) const;
   bool _timeSyncRequested;
   uint32_t _lastTimeSetMs;

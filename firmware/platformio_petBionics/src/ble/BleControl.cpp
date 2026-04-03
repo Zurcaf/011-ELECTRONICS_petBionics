@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <sys/time.h>
 
 #if __has_include(<BLEDevice.h>)
 #include <BLEDevice.h>
@@ -33,9 +34,22 @@ namespace
   const char *kControlUuid = "14f16001-9d9c-470f-9f6a-6e6fe401a001";
   const char *kStatusUuid = "14f16002-9d9c-470f-9f6a-6e6fe401a001";
 
+  BLEAdvertising *g_advertising = nullptr;
   BLECharacteristic *g_controlCharacteristic = nullptr;
   BLECharacteristic *g_statusCharacteristic = nullptr;
   BleControl *g_instance = nullptr;
+
+  class ServerCallbacks : public BLEServerCallbacks
+  {
+    void onDisconnect(BLEServer *server) override
+    {
+      (void)server;
+      if (g_advertising)
+      {
+        g_advertising->start();
+      }
+    }
+  };
 
   class ControlCallbacks : public BLECharacteristicCallbacks
   {
@@ -73,10 +87,33 @@ BleControl::BleControl(AppConfig &config)
     : _config(config),
       _lastStatusMs(0),
       _statusCache("{}"),
+      _lastStatusSnapshot{false, false, false, false, 0, 0},
+  _lastPublishedStatus{false, false, false, false, 0, 0},
+  _hasPublishedStatus(false),
+      _hasStatusSnapshot(false),
+      _pendingAck(""),
       _timeSyncRequested(true),
       _lastTimeSetMs(0),
       _timeSynced(false),
       _epochOffsetMs(0) {}
+
+void BleControl::acknowledgeCommand(const char *ack, uint32_t nowMs)
+{
+  if (ack && *ack)
+  {
+    _pendingAck = ack;
+  }
+
+  if (_hasStatusSnapshot)
+  {
+    AppStatus statusNow = _lastStatusSnapshot;
+    statusNow.acquisitionEnabled = _config.acquisitionEnabled;
+    publishStatus(statusNow, nowMs, true);
+    return;
+  }
+
+  _lastStatusMs = nowMs - 1000U;
+}
 
 uint64_t BleControl::currentEpochMs(uint32_t nowMs) const
 {
@@ -114,6 +151,14 @@ bool BleControl::tryApplyTimeCommand(const String &cmd)
     epochMs = epochValue * 1000ULL;
   }
 
+  struct timeval tv;
+  tv.tv_sec = static_cast<time_t>(epochMs / 1000ULL);
+  tv.tv_usec = static_cast<suseconds_t>((epochMs % 1000ULL) * 1000ULL);
+  if (settimeofday(&tv, nullptr) != 0)
+  {
+    BLE_DEBUG_PRINTLN("[BLE RX] TIME warning: settimeofday failed, using offset fallback");
+  }
+
   _epochOffsetMs = static_cast<int64_t>(epochMs) - static_cast<int64_t>(millis());
   _timeSynced = true;
   _timeSyncRequested = false;
@@ -127,6 +172,18 @@ uint64_t BleControl::nowEpochMs(uint32_t nowMs) const
   if (!_timeSynced)
   {
     return 0;
+  }
+
+  struct timeval tv;
+  if (gettimeofday(&tv, nullptr) == 0)
+  {
+    if (tv.tv_sec < 0 || tv.tv_usec < 0)
+    {
+      return 0;
+    }
+
+    return static_cast<uint64_t>(tv.tv_sec) * 1000ULL +
+           static_cast<uint64_t>(tv.tv_usec) / 1000ULL;
   }
 
   int64_t shifted = static_cast<int64_t>(nowMs) + _epochOffsetMs;
@@ -144,6 +201,7 @@ void BleControl::begin(const char *deviceName)
   BLEDevice::init(deviceName);
 
   BLEServer *server = BLEDevice::createServer();
+  server->setCallbacks(new ServerCallbacks());
   BLEService *service = server->createService(kServiceUuid);
 
   g_controlCharacteristic = service->createCharacteristic(
@@ -156,9 +214,9 @@ void BleControl::begin(const char *deviceName)
   g_statusCharacteristic->setValue(_statusCache.c_str());
 
   service->start();
-  BLEAdvertising *advertising = BLEDevice::getAdvertising();
-  advertising->addServiceUUID(kServiceUuid);
-  advertising->start();
+  g_advertising = BLEDevice::getAdvertising();
+  g_advertising->addServiceUUID(kServiceUuid);
+  g_advertising->start();
 
   g_instance = this;
 #else
@@ -167,15 +225,17 @@ void BleControl::begin(const char *deviceName)
 #endif
 }
 
-void BleControl::updateStatus(const AppStatus &status, uint32_t nowMs)
+void BleControl::publishStatus(const AppStatus &status, uint32_t nowMs, bool force)
 {
 #if PETBIONICS_HAS_BLE
+  const uint32_t kStatusPeriodMs = 400;
+
   if (!g_statusCharacteristic)
   {
     return;
   }
 
-  if ((nowMs - _lastStatusMs) < 1000)
+  if (!force && (nowMs - _lastStatusMs) < kStatusPeriodMs)
   {
     return;
   }
@@ -200,15 +260,40 @@ void BleControl::updateStatus(const AppStatus &status, uint32_t nowMs)
                  "\"uptime_ms\":" + String(nowMs) + "," +
                  "\"time_sync_needed\":" + (_timeSyncRequested ? "true" : "false") + "," +
                  "\"time_synced\":" + (_timeSynced ? "true" : "false") + "," +
-                 "\"time_ms\":" + String(epochMsBuffer) + "}";
+                 "\"time_ms\":" + String(epochMsBuffer);
+
+  if (_pendingAck.length() > 0)
+  {
+    _statusCache += ",\"cmd_ack\":\"" + _pendingAck + "\"";
+  }
+
+  _statusCache += "}";
 
   g_statusCharacteristic->setValue(_statusCache.c_str());
   g_statusCharacteristic->notify();
   _lastStatusMs = nowMs;
+  _lastPublishedStatus = status;
+  _hasPublishedStatus = true;
+  _pendingAck = "";
 #else
   (void)status;
   (void)nowMs;
+  (void)force;
 #endif
+}
+
+void BleControl::updateStatus(const AppStatus &status, uint32_t nowMs)
+{
+  _lastStatusSnapshot = status;
+  _hasStatusSnapshot = true;
+
+  const bool importantChange = !_hasPublishedStatus ||
+                               status.acquisitionEnabled != _lastPublishedStatus.acquisitionEnabled ||
+                               status.sdReady != _lastPublishedStatus.sdReady ||
+                               status.imuReady != _lastPublishedStatus.imuReady ||
+                               status.hx711Ready != _lastPublishedStatus.hx711Ready;
+
+  publishStatus(status, nowMs, importantChange);
 }
 
 void BleControl::applyCommand(const String &cmd)
@@ -229,18 +314,21 @@ void BleControl::applyCommand(const String &cmd)
   if (cmd.equalsIgnoreCase("TIME_SYNC_NOW"))
   {
     _timeSyncRequested = true;
+    acknowledgeCommand("TIME_SYNC_NOW", nowMs);
     BLE_DEBUG_PRINTLN("[BLE RX] TIME_SYNC_NOW accepted");
     return;
   }
 
   if (tryApplyTimeCommand(cmd))
   {
+    acknowledgeCommand("TIME", nowMs);
     return;
   }
 
   if (cmd.equalsIgnoreCase("START"))
   {
     _config.acquisitionEnabled = true;
+    acknowledgeCommand("START", nowMs);
     const uint64_t epochMsAfter = nowEpochMs(nowMs);
     if (epochMsAfter > 0)
     {
@@ -258,6 +346,7 @@ void BleControl::applyCommand(const String &cmd)
   if (cmd.equalsIgnoreCase("STOP"))
   {
     _config.acquisitionEnabled = false;
+    acknowledgeCommand("STOP", nowMs);
     const uint64_t epochMsAfter = nowEpochMs(nowMs);
     if (epochMsAfter > 0)
     {
@@ -278,6 +367,7 @@ void BleControl::applyCommand(const String &cmd)
     if (v >= 0.0f && v <= 1.0f)
     {
       _config.filterAlpha = v;
+      acknowledgeCommand("ALPHA", nowMs);
       BLE_DEBUG_PRINTF("[BLE RX] ALPHA applied %.3f\n", v);
     }
     else
@@ -293,6 +383,7 @@ void BleControl::applyCommand(const String &cmd)
     if (v >= 0.0f)
     {
       _config.eventThreshold = v;
+      acknowledgeCommand("THR", nowMs);
       BLE_DEBUG_PRINTF("[BLE RX] THR applied %.3f\n", v);
     }
     else
@@ -308,6 +399,7 @@ void BleControl::applyCommand(const String &cmd)
     if (v >= 1)
     {
       _config.samplePeriodUs = static_cast<uint32_t>(v) * 1000UL;
+      acknowledgeCommand("PERIOD", nowMs);
       BLE_DEBUG_PRINTF("[BLE RX] PERIOD applied %ld ms\n", v);
     }
     else

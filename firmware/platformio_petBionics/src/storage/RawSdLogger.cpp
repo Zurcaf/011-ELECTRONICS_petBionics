@@ -80,91 +80,14 @@ namespace
     snprintf(out, outSize, "/%s", dateKey);
   }
 
-  bool parseSessionFileName(const char *path,
-                            const char *base,
-                            const char *dateKey,
-                            char *timePart,
-                            size_t timePartSize,
-                            uint16_t &runNumber,
-                            uint32_t &sortKey)
+  uint16_t countCsvFilesInFolder(const char *dayFolder)
   {
-    if (!path || !base || !dateKey)
-    {
-      return false;
-    }
-
-    const char *basename = strrchr(path, '/');
-    basename = basename ? basename + 1 : path;
-
-    char normalized[96];
-    strncpy(normalized, basename, sizeof(normalized) - 1);
-    normalized[sizeof(normalized) - 1] = '\0';
-    if (normalized[0] == '/')
-    {
-      memmove(normalized, normalized + 1, strlen(normalized));
-    }
-
-    char prefix[80];
-    snprintf(prefix, sizeof(prefix), "%s_%s_", base, dateKey);
-    const size_t prefixLen = strlen(prefix);
-    if (strncmp(normalized, prefix, prefixLen) != 0)
-    {
-      return false;
-    }
-
-    const char *cursor = normalized + prefixLen;
-    runNumber = 0;
-    if (strncmp(cursor, "run", 3) == 0)
-    {
-      cursor += 3;
-      unsigned parsedRun = 0;
-      while (*cursor >= '0' && *cursor <= '9')
-      {
-        parsedRun = (parsedRun * 10U) + static_cast<unsigned>(*cursor - '0');
-        ++cursor;
-      }
-      if (*cursor != '_')
-      {
-        return false;
-      }
-      runNumber = static_cast<uint16_t>(parsedRun);
-      ++cursor;
-    }
-
-    if (timePart && timePartSize > 0)
-    {
-      strncpy(timePart, cursor, timePartSize - 1);
-      timePart[timePartSize - 1] = '\0';
-    }
-
-    unsigned hour = 0;
-    unsigned minute = 0;
-    unsigned second = 0;
-    unsigned millisPart = 0;
-    if (sscanf(cursor, "%2u%2u%2u_%3u.csv", &hour, &minute, &second, &millisPart) != 4)
-    {
-      return false;
-    }
-
-    if (hour > 23 || minute > 59 || second > 59 || millisPart > 999)
-    {
-      return false;
-    }
-
-    return true;
-  }
-
-  uint16_t collectNextRunNumber(const char *dayFolder,
-                                const char *base,
-                                const char *dateKey)
-  {
-    if (!dayFolder || !base || !dateKey)
+    if (!dayFolder)
     {
       return 0;
     }
 
-    uint16_t maxRunNumber = 0;
-    uint16_t matchedFileCount = 0;
+    uint16_t csvCount = 0;
 
     File directory = SD.open(dayFolder);
     if (!directory)
@@ -181,18 +104,11 @@ namespace
         strncpy(entryName, entry.name(), sizeof(entryName) - 1);
         entryName[sizeof(entryName) - 1] = '\0';
 
-        uint16_t runNumber = 0;
-        uint32_t sortKey = 0;
-        if (parseSessionFileName(entryName, base, dateKey, nullptr, 0, runNumber, sortKey))
+        if (hasCsvExtension(entryName))
         {
-          if (matchedFileCount < 65535)
+          if (csvCount < 65535)
           {
-            ++matchedFileCount;
-          }
-
-          if (runNumber > maxRunNumber)
-          {
-            maxRunNumber = runNumber;
+            ++csvCount;
           }
         }
       }
@@ -202,12 +118,7 @@ namespace
     }
     directory.close();
 
-    if (maxRunNumber > 0)
-    {
-      return static_cast<uint16_t>(maxRunNumber + 1U);
-    }
-
-    return static_cast<uint16_t>(matchedFileCount + 1U);
+    return csvCount;
   }
 
   uint16_t nextDailyRunNumber(const char *basePath, const char *dayFolder, uint64_t epochMs)
@@ -217,21 +128,8 @@ namespace
       return 0;
     }
 
-    char base[64] = {0};
-    extractBaseName(basePath, base, sizeof(base));
-    if (base[0] == '\0')
-    {
-      strncpy(base, "/raw_log", sizeof(base) - 1);
-    }
-    normalizeBaseName(base);
-
-    char dateKey[9] = {0};
-    if (!buildDateKey(epochMs, dateKey, sizeof(dateKey)))
-    {
-      return 0;
-    }
-
-    return collectNextRunNumber(dayFolder, base, dateKey);
+    const uint16_t count = countCsvFilesInFolder(dayFolder);
+    return static_cast<uint16_t>(count + 1U);
   }
 
   bool isCardPresent()

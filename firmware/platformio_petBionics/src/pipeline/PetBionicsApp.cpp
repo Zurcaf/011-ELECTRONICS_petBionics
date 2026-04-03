@@ -57,10 +57,17 @@ void PetBionicsApp::update()
     }
 
     // Keep a fixed sampling timeline in microseconds to reduce jitter and avoid drift.
-    while ((nowUs - _lastSampleUs) >= _config.samplePeriodUs)
+    // Re-check acquisitionEnabled every iteration so STOP can interrupt backlog catch-up quickly.
+    while (_config.acquisitionEnabled && (nowUs - _lastSampleUs) >= _config.samplePeriodUs)
     {
       _lastSampleUs += _config.samplePeriodUs;
       sampleStep(_lastSampleUs / 1000U, _lastSampleUs);
+    }
+
+    if (!_config.acquisitionEnabled)
+    {
+      _logger.stopSession();
+      _wasAcquiring = false;
     }
   }
   else

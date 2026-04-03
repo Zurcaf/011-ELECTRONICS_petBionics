@@ -16,6 +16,8 @@ RawSensor::RawSensor(uint8_t analogPin)
       _hxReady(false),
       _lastImuHealthCheckMs(0),
       _lastHxHealthCheckMs(0),
+    _imuConsecutiveMisses(0),
+    _imuConsecutiveHits(0),
       _hxConsecutiveMisses(0),
   _hxConsecutiveHits(0),
       _hxSuspiciousReads(0) {}
@@ -115,10 +117,37 @@ void RawSensor::updateHealth(uint32_t nowMs)
 
   if ((nowMs - _lastImuHealthCheckMs) >= kHealthCheckPeriodMs)
   {
+    const uint8_t kImuMissesToNotReady = 4;
+    const uint8_t kImuHitsToReady = 2;
+
     _lastImuHealthCheckMs = nowMs;
     uint8_t whoAmI = 0;
     imuReadBytes(kWhoAmIReg, 1, &whoAmI);
-    _imuReady = (whoAmI != 0x00 && whoAmI != 0xFF);
+    const bool imuResponding = (whoAmI != 0x00 && whoAmI != 0xFF);
+    if (imuResponding)
+    {
+      _imuConsecutiveMisses = 0;
+      if (_imuConsecutiveHits < 255)
+      {
+        _imuConsecutiveHits++;
+      }
+      if (_imuConsecutiveHits >= kImuHitsToReady)
+      {
+        _imuReady = true;
+      }
+    }
+    else
+    {
+      _imuConsecutiveHits = 0;
+      if (_imuConsecutiveMisses < 255)
+      {
+        _imuConsecutiveMisses++;
+      }
+      if (_imuConsecutiveMisses >= kImuMissesToNotReady)
+      {
+        _imuReady = false;
+      }
+    }
   }
 
   if ((nowMs - _lastHxHealthCheckMs) >= kHealthCheckPeriodMs)

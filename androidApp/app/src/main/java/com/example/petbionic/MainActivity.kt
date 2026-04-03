@@ -7,7 +7,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -20,7 +19,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TIME_SYNC_RETRY_INTERVAL_MS = 5000L
-        private const val STATUS_REFRESH_INTERVAL_MS = 1500L
+        private const val STATUS_REFRESH_INTERVAL_MS = 700L
     }
 
     private lateinit var tvStatus: TextView
@@ -42,6 +41,7 @@ class MainActivity : AppCompatActivity() {
             if (!BleManager.isConnected) {
                 return
             }
+            maybeSendTimeSync(force = false)
             BleManager.requestStatusRefresh()
             statusRefreshHandler.postDelayed(this, STATUS_REFRESH_INTERVAL_MS)
         }
@@ -116,12 +116,12 @@ class MainActivity : AppCompatActivity() {
 
         btnStart.setOnClickListener {
             BleManager.sendCommand("START")
-            tvSessionState.text = "State: Waiting device update..."
+            requestStatusRefreshBurst()
         }
 
         btnStop.setOnClickListener {
             BleManager.sendCommand("STOP")
-            tvSessionState.text = "State: Waiting device update..."
+            requestStatusRefreshBurst()
         }
 
         btnHistory.setOnClickListener {
@@ -152,6 +152,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun stopStatusRefreshLoop() {
         statusRefreshHandler.removeCallbacks(statusRefreshRunnable)
+    }
+
+    private fun requestStatusRefreshBurst() {
+        BleManager.requestStatusRefresh()
+        statusRefreshHandler.postDelayed({ BleManager.requestStatusRefresh() }, 150)
+        statusRefreshHandler.postDelayed({ BleManager.requestStatusRefresh() }, 450)
     }
 
     private fun updateUI(connected: Boolean) {
@@ -225,11 +231,11 @@ class MainActivity : AppCompatActivity() {
     private fun sendCurrentTimeToDevice() {
         val epochMs = System.currentTimeMillis()
         BleManager.sendCommand("TIME=$epochMs")
-        lastTimeSyncAttemptElapsedMs = SystemClock.elapsedRealtime()
+        lastTimeSyncAttemptElapsedMs = System.currentTimeMillis()
     }
 
     private fun maybeSendTimeSync(force: Boolean = false) {
-        val nowElapsed = SystemClock.elapsedRealtime()
+        val nowElapsed = System.currentTimeMillis()
         if (!force && (nowElapsed - lastTimeSyncAttemptElapsedMs) < TIME_SYNC_RETRY_INTERVAL_MS) {
             return
         }
@@ -253,6 +259,14 @@ class MainActivity : AppCompatActivity() {
                 val hx711 = if (json.has("hx711")) json.optBoolean("hx711", false) else null
                 val samples = json.optLong("samples", 0)
                 val syncNeeded = json.optBoolean("time_sync_needed", false)
+                val cmdAck = json.optString("cmd_ack", "")
+
+                if (cmdAck.equals("START", ignoreCase = true) ||
+                    cmdAck.equals("STOP", ignoreCase = true)
+                ) {
+                    // When firmware acknowledges a command, pull next status sooner.
+                    requestStatusRefreshBurst()
+                }
 
                 val state = if (acq) "Recording" else "Idle"
                 val sdState = if (sd) "OK" else "Not ready"

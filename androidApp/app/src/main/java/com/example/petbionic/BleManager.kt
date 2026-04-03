@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
+import java.util.ArrayDeque
 import java.util.UUID
 
 @SuppressLint("MissingPermission")
@@ -33,6 +34,7 @@ object BleManager {
     private var statusCharRef: BluetoothGattCharacteristic? = null
     private var lastStatusPayload: String? = null
     private var scanner: BluetoothLeScanner? = null
+    private val pendingCommands = ArrayDeque<String>()
     private val handler = Handler(Looper.getMainLooper())
     private val stopScanRunnable = Runnable { stopScan() }
 
@@ -86,6 +88,7 @@ object BleManager {
         cmdChar = null
         statusCharRef = null
         lastStatusPayload = null
+        pendingCommands.clear()
         isConnected = false
         gatt?.disconnect()
         closeGatt()
@@ -106,9 +109,28 @@ object BleManager {
     }
 
     fun sendCommand(command: String) {
-        cmdChar?.let {
-            it.value = command.toByteArray()
-            gatt?.writeCharacteristic(it)
+        val g = gatt
+        val c = cmdChar
+        if (g == null || c == null) {
+            if (pendingCommands.size >= 8) {
+                pendingCommands.removeFirst()
+            }
+            pendingCommands.addLast(command)
+            return
+        }
+
+        c.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+        c.value = command.toByteArray()
+        g.writeCharacteristic(c)
+    }
+
+    private fun flushPendingCommands() {
+        val g = gatt ?: return
+        val c = cmdChar ?: return
+        while (pendingCommands.isNotEmpty()) {
+            c.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            c.value = pendingCommands.removeFirst().toByteArray()
+            g.writeCharacteristic(c)
         }
     }
 
@@ -137,6 +159,7 @@ object BleManager {
                 cmdChar = null
                 statusCharRef = null
                 lastStatusPayload = null
+                pendingCommands.clear()
                 isConnected = true
                 handler.post { onConnectionChanged?.invoke(true) }
                 gatt.discoverServices()
@@ -145,6 +168,7 @@ object BleManager {
 
             cmdChar = null
             statusCharRef = null
+            pendingCommands.clear()
             isConnected = false
             closeGatt()
             handler.post { onConnectionChanged?.invoke(false) }
@@ -180,6 +204,7 @@ object BleManager {
 
             cmdChar = control
             statusCharRef = statusChar
+            flushPendingCommands()
 
             // Some devices are flaky with notifications; force one immediate read for UI bootstrap.
             gatt.readCharacteristic(statusChar)
