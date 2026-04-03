@@ -22,6 +22,7 @@ object BleManager {
     private var cmdChar: BluetoothGattCharacteristic? = null
     private var scanner: BluetoothLeScanner? = null
     private val handler = Handler(Looper.getMainLooper())
+    private val stopScanRunnable = Runnable { stopScan() }
 
     @SuppressLint("StaticFieldLeak")
     private var context: Context? = null
@@ -43,6 +44,10 @@ object BleManager {
         if (!adapter.isEnabled) {
             return
         }
+        // Ensure a clean state before attempting a new discovery/connection cycle.
+        closeGatt()
+        cmdChar = null
+        isConnected = false
         scanner = adapter.bluetoothLeScanner
         val filters = listOf(
             ScanFilter.Builder().setServiceUuid(ParcelUuid(SERVICE_UUID)).build(),
@@ -50,20 +55,28 @@ object BleManager {
         )
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
+        handler.removeCallbacks(stopScanRunnable)
         scanner?.startScan(filters, settings, scanCallback)
-        handler.postDelayed({ stopScan() }, 10000)
+        handler.postDelayed(stopScanRunnable, 10000)
     }
 
     fun stopScan() {
+        handler.removeCallbacks(stopScanRunnable)
         scanner?.stopScan(scanCallback)
     }
 
     fun disconnect() {
+        stopScan()
+        cmdChar = null
+        isConnected = false
         gatt?.disconnect()
+        closeGatt()
+        handler.post { onConnectionChanged?.invoke(false) }
+    }
+
+    private fun closeGatt() {
         gatt?.close()
         gatt = null
-        isConnected = false
-        handler.post { onConnectionChanged?.invoke(false) }
     }
 
     fun sendCommand(command: String) {
@@ -77,35 +90,71 @@ object BleManager {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             stopScan()
             val ctx = context ?: return
+            closeGatt()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                result.device.connectGatt(ctx, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+                gatt = result.device.connectGatt(ctx, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
             } else {
-                result.device.connectGatt(ctx, false, gattCallback)
+                gatt = result.device.connectGatt(ctx, false, gattCallback)
             }
+        }
+
+        override fun onScanFailed(errorCode: Int) {
+            isConnected = false
+            handler.post { onConnectionChanged?.invoke(false) }
         }
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-            if (newState == BluetoothProfile.STATE_CONNECTED) {
+            if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
                 this@BleManager.gatt = gatt
-                isConnected = true
+                cmdChar = null
                 gatt.discoverServices()
-                handler.post { onConnectionChanged?.invoke(true) }
-            } else {
-                isConnected = false
-                handler.post { onConnectionChanged?.invoke(false) }
+                return
             }
+
+            cmdChar = null
+            isConnected = false
+            closeGatt()
+            handler.post { onConnectionChanged?.invoke(false) }
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                disconnect()
+                return
+            }
+
             val service = gatt.getService(SERVICE_UUID) ?: return
-            cmdChar = service.getCharacteristic(CMD_CHAR_UUID)
+            val control = service.getCharacteristic(CMD_CHAR_UUID)
             val statusChar = service.getCharacteristic(STATUS_CHAR_UUID)
+            if (control == null || statusChar == null) {
+                disconnect()
+                return
+            }
+
+            cmdChar = control
             gatt.setCharacteristicNotification(statusChar, true)
             val descriptor = statusChar.getDescriptor(CCCD_UUID)
-            descriptor?.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+            if (descriptor == null) {
+                disconnect()
+                return
+            }
+            descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
             gatt.writeDescriptor(descriptor)
+        }
+
+        override fun onDescriptorWrite(
+            gatt: BluetoothGatt,
+            descriptor: BluetoothGattDescriptor,
+            status: Int
+        ) {
+            if (descriptor.uuid == CCCD_UUID && status == BluetoothGatt.GATT_SUCCESS) {
+                isConnected = true
+                handler.post { onConnectionChanged?.invoke(true) }
+            } else if (descriptor.uuid == CCCD_UUID) {
+                disconnect()
+            }
         }
 
         override fun onCharacteristicChanged(

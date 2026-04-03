@@ -11,6 +11,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
 
@@ -61,15 +62,7 @@ class MainActivity : AppCompatActivity() {
 
         BleManager.onStatusReceived = { status ->
             runOnUiThread {
-                val clean = when {
-                    status.contains("recording") -> "🔴 Recording..."
-                    status.contains("syncing")   -> "🔄 Syncing to cloud..."
-                    status.contains("done")      -> "✅ Sync complete!"
-                    status.contains("idle")      -> "⚪ Idle"
-                    status.contains("sync_failed") -> "❌ Sync failed"
-                    else -> status
-                }
-                tvSessionState.text = "State: $clean"
+                tvSessionState.text = formatStatusForUi(status)
             }
         }
 
@@ -83,12 +76,12 @@ class MainActivity : AppCompatActivity() {
 
         btnStart.setOnClickListener {
             BleManager.sendCommand("START")
-            tvSessionState.text = "State: recording"
+            tvSessionState.text = "State: Waiting device update..."
         }
 
         btnStop.setOnClickListener {
             BleManager.sendCommand("STOP")
-            tvSessionState.text = "State: syncing..."
+            tvSessionState.text = "State: Waiting device update..."
         }
 
         btnHistory.setOnClickListener {
@@ -166,5 +159,70 @@ class MainActivity : AppCompatActivity() {
     private fun startBLEScan() {
         Toast.makeText(this, "Scanning for PetBionic...", Toast.LENGTH_SHORT).show()
         BleManager.startScan()
+    }
+
+    private fun formatStatusForUi(status: String): String {
+        val cleaned = status.replace("\u0000", "").trim()
+        val jsonPayload = run {
+            val start = cleaned.indexOf('{')
+            val end = cleaned.lastIndexOf('}')
+            if (start >= 0 && end > start) cleaned.substring(start, end + 1) else null
+        }
+
+        if (jsonPayload != null) {
+            runCatching {
+                val json = JSONObject(jsonPayload)
+                val acq = json.optBoolean("acq", false)
+                val sd = json.optBoolean("sd", false)
+                val samples = json.optLong("samples", 0)
+                val events = json.optLong("events", 0)
+                val syncNeeded = json.optBoolean("time_sync_needed", false)
+
+                val state = if (acq) "Recording" else "Idle"
+                val sdState = if (sd) "OK" else "Not ready"
+                val syncState = if (syncNeeded) "Needed" else "OK"
+
+                return "State: $state | SD: $sdState | Samples: $samples | Events: $events | TimeSync: $syncState"
+            }
+        }
+
+        // Some BLE stacks deliver fragmented notify payloads. Handle partial JSON text too.
+        if (cleaned.contains("\"acq\"")) {
+            val acq = Regex("\"acq\"\\s*:\\s*(true|false)", RegexOption.IGNORE_CASE)
+                .find(cleaned)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.equals("true", ignoreCase = true)
+
+            val sd = Regex("\"sd\"\\s*:\\s*(true|false)", RegexOption.IGNORE_CASE)
+                .find(cleaned)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.equals("true", ignoreCase = true)
+
+            val state = when (acq) {
+                true -> "Recording"
+                false -> "Idle"
+                null -> "Unknown"
+            }
+
+            val sdState = when (sd) {
+                true -> "OK"
+                false -> "Not ready"
+                null -> "Unknown"
+            }
+
+            return "State: $state | SD: $sdState"
+        }
+
+        val legacyState = when {
+            cleaned.contains("recording", ignoreCase = true) -> "Recording"
+            cleaned.contains("syncing", ignoreCase = true) -> "Syncing to cloud"
+            cleaned.contains("done", ignoreCase = true) -> "Sync complete"
+            cleaned.contains("idle", ignoreCase = true) -> "Idle"
+            cleaned.contains("sync_failed", ignoreCase = true) -> "Sync failed"
+            else -> cleaned
+        }
+        return "State: $legacyState"
     }
 }

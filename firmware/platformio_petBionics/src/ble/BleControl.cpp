@@ -33,9 +33,22 @@ namespace
   const char *kControlUuid = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
   const char *kStatusUuid = "beb5483e-36e1-4688-b7f5-ea07361b26a9";
 
+  BLEAdvertising *g_advertising = nullptr;
   BLECharacteristic *g_controlCharacteristic = nullptr;
   BLECharacteristic *g_statusCharacteristic = nullptr;
   BleControl *g_instance = nullptr;
+
+  class ServerCallbacks : public BLEServerCallbacks
+  {
+    void onDisconnect(BLEServer *server) override
+    {
+      (void)server;
+      if (g_advertising)
+      {
+        g_advertising->start();
+      }
+    }
+  };
 
   class ControlCallbacks : public BLECharacteristicCallbacks
   {
@@ -144,6 +157,7 @@ void BleControl::begin(const char *deviceName)
   BLEDevice::init(deviceName);
 
   BLEServer *server = BLEDevice::createServer();
+  server->setCallbacks(new ServerCallbacks());
   BLEService *service = server->createService(kServiceUuid);
 
   g_controlCharacteristic = service->createCharacteristic(
@@ -156,9 +170,9 @@ void BleControl::begin(const char *deviceName)
   g_statusCharacteristic->setValue(_statusCache.c_str());
 
   service->start();
-  BLEAdvertising *advertising = BLEDevice::getAdvertising();
-  advertising->addServiceUUID(kServiceUuid);
-  advertising->start();
+  g_advertising = BLEDevice::getAdvertising();
+  g_advertising->addServiceUUID(kServiceUuid);
+  g_advertising->start();
 
   g_instance = this;
 #else
