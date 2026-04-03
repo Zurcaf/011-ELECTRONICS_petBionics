@@ -5,7 +5,7 @@
 
 struct AppConfig
 {
-  uint32_t samplePeriodMs = 20;  // 50 Hz
+  uint32_t samplePeriodUs = 12500; // 80 Hz
   float filterAlpha = 0.2f;      // light EMA filter
   float eventThreshold = 100.0f; // abs(filtered - raw)
   uint32_t eventCooldownMs = 300;

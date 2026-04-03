@@ -9,6 +9,7 @@ Estrutura atual:
 - test/test_high_rate_imu_only/test_main.cpp
 - test/test_sdcard_write_speed/test_main.cpp (Performance do SD Card)
 - test/test_buffered_sdcard_logging/test_main.cpp (Buffering de dados)
+- test/test_imu_orientation/test_main.cpp (Roll/Pitch/Yaw + magnetometro)
 
 Objetivo dos testes integrados:
 
@@ -50,7 +51,7 @@ Se o comando `pio` nao funcionar no PowerShell, usar caminho completo:
 
 3. Resultado esperado:
 
-- 4 test cases succeeded
+- 6 test cases succeeded
 
 Output serial esperado:
 
@@ -103,6 +104,14 @@ Teste de logging com buffering (recomendado para producao):
   - v1-v6: valores raw em LSB
 
 - Para apenas teste buffering: pio test -e seeed_xiao_esp32c3 --filter test_buffered_sdcard_logging
+
+Teste de orientacao IMU:
+
+- Inicializa MPU9250 por SPI e AK8963 (magnetometro interno)
+- Le 80 amostras, calcula roll/pitch/yaw em graus e imprime stream completo
+- Valida que os angulos nao sao NaN e que existem amostras magneticas validas
+
+- Para apenas este teste: pio test -e seeed_xiao_esp32c3 --filter test_imu_orientation
 
 Se falhar no upload com erro de porta ocupada:
 

@@ -27,8 +27,9 @@ private:
   RawSdLogger _logger;
   BleControl _ble;
 
-  uint32_t _lastSampleMs;
+  uint32_t _lastSampleUs;
+  bool _wasAcquiring;
   AppStatus _status;
 
-  void sampleStep(uint32_t nowMs);
+  void sampleStep(uint32_t nowMs, uint32_t nowUs);
 };

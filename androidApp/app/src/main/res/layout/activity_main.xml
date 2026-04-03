@@ -103,15 +103,6 @@
                 android:layout_marginTop="4dp"/>
 
             <TextView
-                android:id="@+id/tvEventsState"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Events: -"
-                android:textSize="14sp"
-                android:textColor="#555555"
-                android:layout_marginTop="4dp"/>
-
-            <TextView
                 android:id="@+id/tvTimeSyncState"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <sys/time.h>
 
 #if __has_include(<BLEDevice.h>)
 #include <BLEDevice.h>
@@ -28,6 +29,22 @@
 
 namespace
 {
+#if PETBIONICS_HAS_BLE
+  void syncSystemClock(uint64_t epochMs)
+  {
+    if (epochMs == 0)
+    {
+      return;
+    }
+
+    timeval tv;
+    tv.tv_sec = static_cast<time_t>(epochMs / 1000ULL);
+    tv.tv_usec = static_cast<suseconds_t>((epochMs % 1000ULL) * 1000ULL);
+    settimeofday(&tv, nullptr);
+  }
+
+#endif
+
 #if PETBIONICS_HAS_BLE
   const char *kServiceUuid = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
   const char *kControlUuid = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
@@ -131,6 +148,7 @@ bool BleControl::tryApplyTimeCommand(const String &cmd)
   _timeSynced = true;
   _timeSyncRequested = false;
   _lastTimeSetMs = millis();
+  syncSystemClock(epochMs);
   BLE_DEBUG_PRINTF("[BLE RX] TIME applied epoch_ms=%llu\n", static_cast<unsigned long long>(epochMs));
   return true;
 }
@@ -321,12 +339,29 @@ void BleControl::applyCommand(const String &cmd)
     long v = cmd.substring(7).toInt();
     if (v >= 1)
     {
-      _config.samplePeriodMs = static_cast<uint32_t>(v);
+      _config.samplePeriodUs = static_cast<uint32_t>(v) * 1000UL;
       BLE_DEBUG_PRINTF("[BLE RX] PERIOD applied %ld ms\n", v);
     }
     else
     {
       BLE_DEBUG_PRINTF("[BLE RX] PERIOD ignored %ld (must be >=1)\n", v);
+    }
+    return;
+  }
+
+  if (cmd.startsWith("RATE="))
+  {
+    long hz = cmd.substring(5).toInt();
+    if (hz >= 1)
+    {
+      _config.samplePeriodUs = static_cast<uint32_t>(1000000UL / static_cast<uint32_t>(hz));
+      BLE_DEBUG_PRINTF("[BLE RX] RATE applied %ld Hz (period_us=%lu)\n",
+                       hz,
+                       static_cast<unsigned long>(_config.samplePeriodUs));
+    }
+    else
+    {
+      BLE_DEBUG_PRINTF("[BLE RX] RATE ignored %ld (must be >=1)\n", hz);
     }
     return;
   }

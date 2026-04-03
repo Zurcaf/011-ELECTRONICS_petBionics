@@ -6,7 +6,8 @@ PetBionicsApp::PetBionicsApp()
       _detector(_config.eventThreshold, _config.eventCooldownMs),
       _logger(_config.sdCsPin, _config.sdPath),
       _ble(_config),
-      _lastSampleMs(0),
+        _lastSampleUs(0),
+        _wasAcquiring(false),
       _status{false, false, false, false, 0, 0} {}
 
 void PetBionicsApp::begin()
@@ -38,10 +39,37 @@ void PetBionicsApp::update()
   _sensor.updateHealth(nowMs);
   _logger.updateHealth(nowMs);
 
-  if (_config.acquisitionEnabled && (nowMs - _lastSampleMs) >= _config.samplePeriodMs)
+  if (_config.acquisitionEnabled)
   {
-    sampleStep(nowMs);
-    _lastSampleMs = nowMs;
+    const uint32_t nowUs = micros();
+
+    if (!_wasAcquiring)
+    {
+      _lastSampleUs = nowUs;
+      _status.samples = 0;
+      _status.events = 0;
+      const uint64_t startEpochMs = _ble.currentEpochMs(nowMs);
+      if (!_logger.startSession(startEpochMs))
+      {
+        Serial.println("Failed to start SD log session");
+      }
+      _wasAcquiring = true;
+    }
+
+    // Keep a fixed sampling timeline in microseconds to reduce jitter and avoid drift.
+    while ((nowUs - _lastSampleUs) >= _config.samplePeriodUs)
+    {
+      _lastSampleUs += _config.samplePeriodUs;
+      sampleStep(_lastSampleUs / 1000U, _lastSampleUs);
+    }
+  }
+  else
+  {
+    if (_wasAcquiring)
+    {
+      _logger.stopSession();
+    }
+    _wasAcquiring = false;
   }
 
   _status.acquisitionEnabled = _config.acquisitionEnabled;
@@ -51,7 +79,7 @@ void PetBionicsApp::update()
   _ble.updateStatus(_status, nowMs);
 }
 
-void PetBionicsApp::sampleStep(uint32_t nowMs)
+void PetBionicsApp::sampleStep(uint32_t nowMs, uint32_t nowUs)
 {
   _filter.setAlpha(_config.filterAlpha);
   _detector.setThreshold(_config.eventThreshold);
@@ -63,13 +91,16 @@ void PetBionicsApp::sampleStep(uint32_t nowMs)
   int16_t gx = 0;
   int16_t gy = 0;
   int16_t gz = 0;
+  int16_t mx = 0;
+  int16_t my = 0;
+  int16_t mz = 0;
 
   int32_t raw = _sensor.readRaw();
-  _sensor.readImuAxes(ax, ay, az, gx, gy, gz);
+  _sensor.readImuAxes(ax, ay, az, gx, gy, gz, mx, my, mz);
   float filtered = _filter.update(static_cast<float>(raw));
   EventInfo event = _detector.update(static_cast<float>(raw), filtered, nowMs);
 
-  RawSample sample{nowMs, epochMs, raw, filtered, ax, ay, az, gx, gy, gz};
+  RawSample sample{nowMs, nowUs, epochMs, raw, filtered, ax, ay, az, gx, gy, gz, mx, my, mz};
   _logger.append(sample, event);
 
   _status.samples++;

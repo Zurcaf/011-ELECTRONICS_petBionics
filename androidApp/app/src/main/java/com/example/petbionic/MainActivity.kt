@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -15,19 +16,23 @@ import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        private const val TIME_SYNC_RETRY_INTERVAL_MS = 5000L
+    }
+
     private lateinit var tvStatus: TextView
     private lateinit var tvSessionState: TextView
     private lateinit var tvSdState: TextView
     private lateinit var tvImuState: TextView
     private lateinit var tvHx711State: TextView
     private lateinit var tvSamplesState: TextView
-    private lateinit var tvEventsState: TextView
     private lateinit var tvTimeSyncState: TextView
     private lateinit var btnConnect: Button
     private lateinit var btnStart: Button
     private lateinit var btnStop: Button
     private lateinit var btnHistory: Button
     private lateinit var btnWifi: Button
+    private var lastTimeSyncAttemptElapsedMs: Long = 0
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -51,7 +56,6 @@ class MainActivity : AppCompatActivity() {
         tvImuState = findViewById(R.id.tvImuState)
         tvHx711State = findViewById(R.id.tvHx711State)
         tvSamplesState = findViewById(R.id.tvSamplesState)
-        tvEventsState = findViewById(R.id.tvEventsState)
         tvTimeSyncState = findViewById(R.id.tvTimeSyncState)
         btnConnect = findViewById(R.id.btnConnect)
         btnStart = findViewById(R.id.btnStart)
@@ -177,6 +181,15 @@ class MainActivity : AppCompatActivity() {
     private fun sendCurrentTimeToDevice() {
         val epochMs = System.currentTimeMillis()
         BleManager.sendCommand("TIME=$epochMs")
+        lastTimeSyncAttemptElapsedMs = SystemClock.elapsedRealtime()
+    }
+
+    private fun maybeSendTimeSync(force: Boolean = false) {
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (!force && (nowElapsed - lastTimeSyncAttemptElapsedMs) < TIME_SYNC_RETRY_INTERVAL_MS) {
+            return
+        }
+        sendCurrentTimeToDevice()
     }
 
     private fun renderStatus(status: String) {
@@ -195,7 +208,6 @@ class MainActivity : AppCompatActivity() {
                 val imu = json.optBoolean("imu", false)
                 val hx711 = json.optBoolean("hx711", false)
                 val samples = json.optLong("samples", 0)
-                val events = json.optLong("events", 0)
                 val syncNeeded = json.optBoolean("time_sync_needed", false)
 
                 val state = if (acq) "Recording" else "Idle"
@@ -204,12 +216,15 @@ class MainActivity : AppCompatActivity() {
                 val hx711State = if (hx711) "OK" else "Not ready"
                 val syncState = if (syncNeeded) "Needed" else "OK"
 
+                if (syncNeeded) {
+                    maybeSendTimeSync(force = false)
+                }
+
                 tvSessionState.text = "State: $state"
                 tvSdState.text = "SD: $sdState"
                 tvImuState.text = "IMU: $imuState"
                 tvHx711State.text = "HX711: $hx711State"
                 tvSamplesState.text = "Samples: $samples"
-                tvEventsState.text = "Events: $events"
                 tvTimeSyncState.text = "Time sync: $syncState"
                 return
             }
@@ -273,7 +288,6 @@ class MainActivity : AppCompatActivity() {
         tvImuState.text = "IMU: -"
         tvHx711State.text = "HX711: -"
         tvSamplesState.text = "Samples: -"
-        tvEventsState.text = "Events: -"
         tvTimeSyncState.text = "Time sync: -"
     }
 }

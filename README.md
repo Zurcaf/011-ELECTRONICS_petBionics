@@ -16,6 +16,15 @@ O sistema permite:
 
 O sistema segue um modelo **Store-and-Forward**, onde os dados são guardados localmente e enviados posteriormente quando existir ligação Wi-Fi.
 
+### Estado atual (2026-04)
+
+- BLE app e firmware alinhados no mesmo nome/servico/caracteristicas
+- Sincronizacao horaria via comando `TIME=<epoch_ms>` com retry automatico no Android
+- Logging em ficheiros por sessao no SD, organizados por dia e run
+- Pipeline em 80 Hz com timeline fixa em microssegundos (`12500 us`)
+- CSV simplificado: sem `event/score`, com acelerometro, giroscopio e magnetometro
+- Teste dedicado de orientacao IMU (roll/pitch/yaw) em `test/test_imu_orientation`
+
 ---
 
 # 🏗 Arquitetura do Sistema
@@ -138,17 +147,18 @@ Conclusões práticas:
 - 2048 B é um bom compromisso entre latência e eficiência.
 - Registar apenas RAW reduz CPU e simplifica pós-processamento.
 
-**Formato de LOG (RAW ONLY):**
+**Formato de LOG atual (sessao):**
 
 ```csv
-time_ms,type,v1,v2,v3,v4,v5,v6
-1000,IMU,1234,5678,9012,-340,-123,567
-1006,HX,388125,0,0,0,0,0
-1013,IMU,1245,5690,9025,-342,-125,570
+t_rel_ms,t_rel_us,time_local,load_cell_raw,load_cell_filt,imu_ax,imu_ay,imu_az,imu_gx,imu_gy,imu_gz,imu_mx,imu_my,imu_mz
+0,0,14:22:10.123,388125,388125.000,-340,-123,567,12,-7,18,134,-220,89
+12,12500,14:22:10.135,388190,388138.000,-338,-120,571,10,-8,20,136,-219,92
 ```
 
-- `type`: IMU (acelerómetro XYZ + giroscópio XYZ) ou HX (load cell raw 24-bit)
-- Valores: raw em LSB (sem processamento nem conversão de unidades)
+- `t_rel_ms` e `t_rel_us`: tempo relativo da sessao
+- `time_local`: hora local baseada no relogio sincronizado por BLE
+- `load_cell_raw` e `load_cell_filt`: carga bruta e filtrada
+- `imu_a*`, `imu_g*`, `imu_m*`: acelerometro, giroscopio e magnetometro (raw)
 
 ### Mapeamento de Pinos
 

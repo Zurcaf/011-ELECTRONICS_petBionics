@@ -64,9 +64,9 @@ Os pinos definidos em `src/core/Pinout.h` são estes:
 
 O firmware expõe um serviço BLE custom via GATT para comandos e estado:
 
-- Service UUID: `14f16000-9d9c-470f-9f6a-6e6fe401a001`
-- Control UUID: `14f16001-9d9c-470f-9f6a-6e6fe401a001`
-- Status UUID: `14f16002-9d9c-470f-9f6a-6e6fe401a001`
+- Service UUID: `4fafc201-1fb5-459e-8fcc-c5c9c331914b`
+- Control UUID: `beb5483e-36e1-4688-b7f5-ea07361b26a8`
+- Status UUID: `beb5483e-36e1-4688-b7f5-ea07361b26a9`
 
 Comandos suportados:
 
@@ -75,8 +75,31 @@ Comandos suportados:
 - `ALPHA=<0..1>`
 - `THR=<valor>`
 - `PERIOD=<ms>`
+- `RATE=<hz>`
 - `TIME=<epoch_s_ou_ms>`
 - `TIME_SYNC_NOW`
+
+Notas:
+
+- `PERIOD=<ms>` atualiza internamente `samplePeriodUs`.
+- `RATE=<hz>` converte para periodo em microssegundos (`1000000/hz`).
+- `TIME=` sincroniza o relogio interno usado para timestamps e nomeacao de sessao.
+
+## Aquisição e logging
+
+- Amostragem com timeline fixa em microssegundos.
+- Valor por omissao: `samplePeriodUs = 12500` (80 Hz).
+- Sessao SD inicia no `START` e termina no `STOP`.
+- Ficheiros CSV criados por dia/run (ex.: `/20260403/raw_log_20260403_run001_142210_123.csv`).
+
+Header CSV atual:
+
+```csv
+t_rel_ms,t_rel_us,time_local,load_cell_raw,load_cell_filt,imu_ax,imu_ay,imu_az,imu_gx,imu_gy,imu_gz,imu_mx,imu_my,imu_mz
+```
+
+- O CSV nao inclui mais as colunas `event` e `score`.
+- O magnetometro (AK8963) e exportado como `imu_mx`, `imu_my`, `imu_mz`.
 
 ## Estrutura do projeto
 
