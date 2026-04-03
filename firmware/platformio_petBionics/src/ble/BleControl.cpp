@@ -207,6 +207,8 @@ void BleControl::updateStatus(const AppStatus &status, uint32_t nowMs)
   _statusCache = String("{") +
                  "\"acq\":" + (status.acquisitionEnabled ? "true" : "false") + "," +
                  "\"sd\":" + (status.sdReady ? "true" : "false") + "," +
+                 "\"imu\":" + (status.imuReady ? "true" : "false") + "," +
+                 "\"hx711\":" + (status.hx711Ready ? "true" : "false") + "," +
                  "\"samples\":" + String(status.samples) + "," +
                  "\"events\":" + String(status.events) + "," +
                  "\"uptime_ms\":" + String(nowMs) + "," +

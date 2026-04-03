@@ -6,7 +6,11 @@
 #include "../core/Pinout.h"
 
 RawSdLogger::RawSdLogger(uint8_t csPin, const char *filePath)
-    : _csPin(csPin), _filePath(filePath), _ready(false), _spi(FSPI) {}
+    : _csPin(csPin),
+      _filePath(filePath),
+      _ready(false),
+      _spi(FSPI),
+      _lastHealthCheckMs(0) {}
 
 bool RawSdLogger::begin()
 {
@@ -21,7 +25,42 @@ bool RawSdLogger::begin()
     return false;
   }
 
+  _lastHealthCheckMs = millis();
+
   return ensureHeader();
+}
+
+void RawSdLogger::updateHealth(uint32_t nowMs)
+{
+  const uint32_t kHealthCheckPeriodMs = 1000;
+  if ((nowMs - _lastHealthCheckMs) < kHealthCheckPeriodMs)
+  {
+    return;
+  }
+  _lastHealthCheckMs = nowMs;
+
+  if (_ready)
+  {
+    File probe = SD.open(_filePath, FILE_APPEND);
+    if (!probe)
+    {
+      _ready = false;
+      Serial.println("SD health check failed: card/file unavailable");
+      return;
+    }
+    probe.close();
+    return;
+  }
+
+  // Attempt recovery if the card was reinserted.
+  if (SD.begin(_csPin, _spi))
+  {
+    _ready = ensureHeader();
+    if (_ready)
+    {
+      Serial.println("SD logger recovered");
+    }
+  }
 }
 
 bool RawSdLogger::ensureHeader()
@@ -46,6 +85,8 @@ bool RawSdLogger::ensureHeader()
 
 bool RawSdLogger::append(const RawSample &sample, const EventInfo &event)
 {
+  updateHealth(millis());
+
   if (!_ready)
   {
     return false;

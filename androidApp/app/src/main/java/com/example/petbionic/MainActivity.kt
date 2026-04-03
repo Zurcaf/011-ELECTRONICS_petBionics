@@ -17,6 +17,12 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var tvStatus: TextView
     private lateinit var tvSessionState: TextView
+    private lateinit var tvSdState: TextView
+    private lateinit var tvImuState: TextView
+    private lateinit var tvHx711State: TextView
+    private lateinit var tvSamplesState: TextView
+    private lateinit var tvEventsState: TextView
+    private lateinit var tvTimeSyncState: TextView
     private lateinit var btnConnect: Button
     private lateinit var btnStart: Button
     private lateinit var btnStop: Button
@@ -41,6 +47,12 @@ class MainActivity : AppCompatActivity() {
 
         tvStatus = findViewById(R.id.tvStatus)
         tvSessionState = findViewById(R.id.tvSessionState)
+        tvSdState = findViewById(R.id.tvSdState)
+        tvImuState = findViewById(R.id.tvImuState)
+        tvHx711State = findViewById(R.id.tvHx711State)
+        tvSamplesState = findViewById(R.id.tvSamplesState)
+        tvEventsState = findViewById(R.id.tvEventsState)
+        tvTimeSyncState = findViewById(R.id.tvTimeSyncState)
         btnConnect = findViewById(R.id.btnConnect)
         btnStart = findViewById(R.id.btnStart)
         btnStop = findViewById(R.id.btnStop)
@@ -53,6 +65,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 updateUI(connected)
                 if (connected) {
+                    sendCurrentTimeToDevice()
                     Toast.makeText(this, "Connected to PetBionic!", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(this, "Disconnected", Toast.LENGTH_SHORT).show()
@@ -62,7 +75,7 @@ class MainActivity : AppCompatActivity() {
 
         BleManager.onStatusReceived = { status ->
             runOnUiThread {
-                tvSessionState.text = formatStatusForUi(status)
+                renderStatus(status)
             }
         }
 
@@ -161,7 +174,12 @@ class MainActivity : AppCompatActivity() {
         BleManager.startScan()
     }
 
-    private fun formatStatusForUi(status: String): String {
+    private fun sendCurrentTimeToDevice() {
+        val epochMs = System.currentTimeMillis()
+        BleManager.sendCommand("TIME=$epochMs")
+    }
+
+    private fun renderStatus(status: String) {
         val cleaned = status.replace("\u0000", "").trim()
         val jsonPayload = run {
             val start = cleaned.indexOf('{')
@@ -174,15 +192,26 @@ class MainActivity : AppCompatActivity() {
                 val json = JSONObject(jsonPayload)
                 val acq = json.optBoolean("acq", false)
                 val sd = json.optBoolean("sd", false)
+                val imu = json.optBoolean("imu", false)
+                val hx711 = json.optBoolean("hx711", false)
                 val samples = json.optLong("samples", 0)
                 val events = json.optLong("events", 0)
                 val syncNeeded = json.optBoolean("time_sync_needed", false)
 
                 val state = if (acq) "Recording" else "Idle"
                 val sdState = if (sd) "OK" else "Not ready"
+                val imuState = if (imu) "OK" else "Not ready"
+                val hx711State = if (hx711) "OK" else "Not ready"
                 val syncState = if (syncNeeded) "Needed" else "OK"
 
-                return "State: $state | SD: $sdState | Samples: $samples | Events: $events | TimeSync: $syncState"
+                tvSessionState.text = "State: $state"
+                tvSdState.text = "SD: $sdState"
+                tvImuState.text = "IMU: $imuState"
+                tvHx711State.text = "HX711: $hx711State"
+                tvSamplesState.text = "Samples: $samples"
+                tvEventsState.text = "Events: $events"
+                tvTimeSyncState.text = "Time sync: $syncState"
+                return
             }
         }
 
@@ -200,19 +229,35 @@ class MainActivity : AppCompatActivity() {
                 ?.getOrNull(1)
                 ?.equals("true", ignoreCase = true)
 
-            val state = when (acq) {
-                true -> "Recording"
-                false -> "Idle"
-                null -> "Unknown"
+            val imu = Regex("\"imu\"\\s*:\\s*(true|false)", RegexOption.IGNORE_CASE)
+                .find(cleaned)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.equals("true", ignoreCase = true)
+
+            val hx711 = Regex("\"hx711\"\\s*:\\s*(true|false)", RegexOption.IGNORE_CASE)
+                .find(cleaned)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.equals("true", ignoreCase = true)
+
+            acq?.let {
+                tvSessionState.text = "State: " + if (it) "Recording" else "Idle"
             }
 
-            val sdState = when (sd) {
-                true -> "OK"
-                false -> "Not ready"
-                null -> "Unknown"
+            sd?.let {
+                tvSdState.text = "SD: " + if (it) "OK" else "Not ready"
             }
 
-            return "State: $state | SD: $sdState"
+            imu?.let {
+                tvImuState.text = "IMU: " + if (it) "OK" else "Not ready"
+            }
+
+            hx711?.let {
+                tvHx711State.text = "HX711: " + if (it) "OK" else "Not ready"
+            }
+
+            return
         }
 
         val legacyState = when {
@@ -223,6 +268,12 @@ class MainActivity : AppCompatActivity() {
             cleaned.contains("sync_failed", ignoreCase = true) -> "Sync failed"
             else -> cleaned
         }
-        return "State: $legacyState"
+        tvSessionState.text = "State: $legacyState"
+        tvSdState.text = "SD: -"
+        tvImuState.text = "IMU: -"
+        tvHx711State.text = "HX711: -"
+        tvSamplesState.text = "Samples: -"
+        tvEventsState.text = "Events: -"
+        tvTimeSyncState.text = "Time sync: -"
     }
 }

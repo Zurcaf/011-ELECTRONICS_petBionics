@@ -26,6 +26,8 @@ struct AppStatus
 {
   bool acquisitionEnabled;
   bool sdReady;
+  bool imuReady;
+  bool hx711Ready;
   uint32_t samples;
   uint32_t events;
 };

@@ -7,7 +7,7 @@ PetBionicsApp::PetBionicsApp()
       _logger(_config.sdCsPin, _config.sdPath),
       _ble(_config),
       _lastSampleMs(0),
-      _status{true, false, 0, 0} {}
+      _status{false, false, false, false, 0, 0} {}
 
 void PetBionicsApp::begin()
 {
@@ -16,6 +16,8 @@ void PetBionicsApp::begin()
   Serial.println("petBionics firmware started");
 
   _sensor.begin();
+  _status.imuReady = _sensor.isImuReady();
+  _status.hx711Ready = _sensor.isHx711Ready();
 
   _status.sdReady = _logger.begin();
   if (_status.sdReady)
@@ -33,6 +35,8 @@ void PetBionicsApp::begin()
 void PetBionicsApp::update()
 {
   uint32_t nowMs = _clock.nowMs();
+  _sensor.updateHealth(nowMs);
+  _logger.updateHealth(nowMs);
 
   if (_config.acquisitionEnabled && (nowMs - _lastSampleMs) >= _config.samplePeriodMs)
   {
@@ -42,6 +46,8 @@ void PetBionicsApp::update()
 
   _status.acquisitionEnabled = _config.acquisitionEnabled;
   _status.sdReady = _logger.isReady();
+  _status.imuReady = _sensor.isImuReady();
+  _status.hx711Ready = _sensor.isHx711Ready();
   _ble.updateStatus(_status, nowMs);
 }
 

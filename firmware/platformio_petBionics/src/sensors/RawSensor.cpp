@@ -10,7 +10,14 @@ namespace
 } // namespace
 
 RawSensor::RawSensor(uint8_t analogPin)
-    : _analogPin(analogPin), _spi(FSPI), _imuReady(false), _hxReady(false) {}
+    : _analogPin(analogPin),
+      _spi(FSPI),
+      _imuReady(false),
+      _hxReady(false),
+      _lastImuHealthCheckMs(0),
+  _lastHxHealthCheckMs(0),
+  _hxConsecutiveMisses(0),
+  _hxSuspiciousReads(0) {}
 
 void RawSensor::imuWriteRegister(uint8_t reg, uint8_t data)
 {
@@ -57,9 +64,62 @@ void RawSensor::begin()
   _hxReady = g_scale.wait_ready_timeout(1000);
 }
 
+void RawSensor::updateHealth(uint32_t nowMs)
+{
+  const uint32_t kHealthCheckPeriodMs = 500;
+
+  if ((nowMs - _lastImuHealthCheckMs) >= kHealthCheckPeriodMs)
+  {
+    _lastImuHealthCheckMs = nowMs;
+    uint8_t whoAmI = 0;
+    imuReadBytes(kWhoAmIReg, 1, &whoAmI);
+    _imuReady = (whoAmI != 0x00 && whoAmI != 0xFF);
+  }
+
+  if ((nowMs - _lastHxHealthCheckMs) >= kHealthCheckPeriodMs)
+  {
+    _lastHxHealthCheckMs = nowMs;
+
+    if (g_scale.wait_ready_timeout(2))
+    {
+      const long raw = g_scale.read();
+      const bool suspicious = (raw == 0L || raw == -1L || raw == 8388607L || raw == -8388608L);
+
+      _hxConsecutiveMisses = 0;
+      if (suspicious)
+      {
+        if (_hxSuspiciousReads < 255)
+        {
+          _hxSuspiciousReads++;
+        }
+      }
+      else
+      {
+        _hxSuspiciousReads = 0;
+      }
+
+      _hxReady = (_hxSuspiciousReads < 3);
+    }
+    else
+    {
+      _hxSuspiciousReads = 0;
+      if (_hxConsecutiveMisses < 255)
+      {
+        _hxConsecutiveMisses++;
+      }
+      if (_hxConsecutiveMisses >= 3)
+      {
+        _hxReady = false;
+      }
+    }
+  }
+}
+
 bool RawSensor::readImuAxes(int16_t &ax, int16_t &ay, int16_t &az,
                             int16_t &gx, int16_t &gy, int16_t &gz)
 {
+  updateHealth(millis());
+
   if (!_imuReady)
   {
     ax = ay = az = gx = gy = gz = 0;
@@ -79,7 +139,9 @@ bool RawSensor::readImuAxes(int16_t &ax, int16_t &ay, int16_t &az,
 
 int32_t RawSensor::readRaw()
 {
-  if (_hxReady && g_scale.is_ready())
+  updateHealth(millis());
+
+  if (_hxReady && g_scale.wait_ready_timeout(2))
   {
     return static_cast<int32_t>(g_scale.read());
   }

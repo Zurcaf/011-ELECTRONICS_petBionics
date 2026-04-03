@@ -109,6 +109,7 @@ object BleManager {
             if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
                 this@BleManager.gatt = gatt
                 cmdChar = null
+                gatt.requestMtu(185)
                 gatt.discoverServices()
                 return
             }
@@ -154,6 +155,12 @@ object BleManager {
                 handler.post { onConnectionChanged?.invoke(true) }
             } else if (descriptor.uuid == CCCD_UUID) {
                 disconnect()
+            }
+        }
+
+        override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                return
             }
         }
 

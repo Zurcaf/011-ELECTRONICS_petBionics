@@ -11,6 +11,7 @@ class RawSdLogger
 public:
   RawSdLogger(uint8_t csPin, const char *filePath);
   bool begin();
+  void updateHealth(uint32_t nowMs);
   bool isReady() const { return _ready; }
   bool append(const RawSample &sample, const EventInfo &event);
 
@@ -19,5 +20,6 @@ private:
   const char *_filePath;
   bool _ready;
   SPIClass _spi;
+  uint32_t _lastHealthCheckMs;
   bool ensureHeader();
 };
