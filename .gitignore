@@ -64,5 +64,10 @@ hardware/pcb/backups/PetBionic_PCB-backups/PetBionic_PCB-*.zip
 # --- Package manager caches ---
 node_modules/
 
+# --- Android Gradle local caches/locks ---
+androidApp/.gradle/
+**/.gradle/*.lock
+**/.gradle/**/*.lock
+
 # --- Keep project assets by default ---
 # (Production gerbers, BOMs, docs, source code remain tracked)
