@@ -87,15 +87,23 @@ BleControl::BleControl(AppConfig &config)
     : _config(config),
       _lastStatusMs(0),
       _statusCache("{}"),
-      _lastStatusSnapshot{false, false, false, false, 0, 0},
-      _lastPublishedStatus{false, false, false, false, 0, 0},
+      _lastStatusSnapshot{false, false, false, false, false, false, 0, 0},
+      _lastPublishedStatus{false, false, false, false, false, false, 0, 0},
       _hasPublishedStatus(false),
       _hasStatusSnapshot(false),
       _pendingAck(""),
       _timeSyncRequested(true),
       _lastTimeSetMs(0),
       _timeSynced(false),
-      _epochOffsetMs(0) {}
+      _epochOffsetMs(0),
+      _customCommandHandler(nullptr),
+      _customCommandContext(nullptr) {}
+
+void BleControl::setCustomCommandHandler(CustomCommandHandler handler, void *context)
+{
+  _customCommandHandler = handler;
+  _customCommandContext = context;
+}
 
 void BleControl::acknowledgeCommand(const char *ack, uint32_t nowMs)
 {
@@ -255,6 +263,8 @@ void BleControl::publishStatus(const AppStatus &status, uint32_t nowMs, bool for
                  "\"sd\":" + (status.sdReady ? "true" : "false") + "," +
                  "\"imu\":" + (status.imuReady ? "true" : "false") + "," +
                  "\"hx711\":" + (status.hx711Ready ? "true" : "false") + "," +
+                 "\"wifi\":" + (status.wifiConnected ? "true" : "false") + "," +
+                 "\"cloud_cfg\":" + (status.cloudConfigured ? "true" : "false") + "," +
                  "\"samples\":" + String(status.samples) + "," +
                  "\"events\":" + String(status.events) + "," +
                  "\"uptime_ms\":" + String(nowMs) + "," +
@@ -291,7 +301,9 @@ void BleControl::updateStatus(const AppStatus &status, uint32_t nowMs)
                                status.acquisitionEnabled != _lastPublishedStatus.acquisitionEnabled ||
                                status.sdReady != _lastPublishedStatus.sdReady ||
                                status.imuReady != _lastPublishedStatus.imuReady ||
-                               status.hx711Ready != _lastPublishedStatus.hx711Ready;
+                               status.hx711Ready != _lastPublishedStatus.hx711Ready ||
+                               status.wifiConnected != _lastPublishedStatus.wifiConnected ||
+                               status.cloudConfigured != _lastPublishedStatus.cloudConfigured;
 
   publishStatus(status, nowMs, importantChange);
 }
@@ -407,6 +419,20 @@ void BleControl::applyCommand(const String &cmd)
       BLE_DEBUG_PRINTF("[BLE RX] PERIOD ignored %ld (must be >=1)\n", v);
     }
     return;
+  }
+
+  if (_customCommandHandler)
+  {
+    String ack;
+    if (_customCommandHandler(_customCommandContext, cmd, ack))
+    {
+      if (ack.length() == 0)
+      {
+        ack = "CUSTOM";
+      }
+      acknowledgeCommand(ack.c_str(), nowMs);
+      return;
+    }
   }
 
   BLE_DEBUG_PRINTF("[BLE RX] unknown cmd '%s'\n", cmd.c_str());

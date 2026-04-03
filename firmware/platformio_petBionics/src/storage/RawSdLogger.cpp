@@ -63,9 +63,9 @@ namespace
     return true;
   }
 
-  void buildDayFolderPath(uint64_t epochMs, char *out, size_t outSize)
+  void buildDayFolderPath(const char *rootPath, uint64_t epochMs, char *out, size_t outSize)
   {
-    if (!out || outSize == 0)
+    if (!rootPath || !out || outSize == 0)
     {
       return;
     }
@@ -73,11 +73,11 @@ namespace
     char dateKey[9] = {0};
     if (!buildDateKey(epochMs, dateKey, sizeof(dateKey)))
     {
-      snprintf(out, outSize, "/unsynced");
+      snprintf(out, outSize, "%s/unsynced", rootPath);
       return;
     }
 
-    snprintf(out, outSize, "/%s", dateKey);
+    snprintf(out, outSize, "%s/%s", rootPath, dateKey);
   }
 
   uint16_t countCsvFilesInFolder(const char *dayFolder)
@@ -207,7 +207,8 @@ namespace
 
     snprintf(out,
              outSize,
-             "%s_unsynced_%010lu.csv",
+             "%s/%s_unsynced_%010lu.csv",
+             dayFolder,
              base,
              static_cast<unsigned long>(millis()));
   }
@@ -271,9 +272,10 @@ namespace
 
 } // namespace
 
-RawSdLogger::RawSdLogger(uint8_t csPin, const char *filePath)
+RawSdLogger::RawSdLogger(uint8_t csPin, const char *filePath, const char *pendingRootPath)
     : _csPin(csPin),
       _filePath(filePath),
+    _pendingRootPath(pendingRootPath),
       _ready(false),
       _spi(FSPI),
       _lastHealthCheckMs(0),
@@ -281,10 +283,14 @@ RawSdLogger::RawSdLogger(uint8_t csPin, const char *filePath)
       _sessionStartEpochMs(0)
 {
   _activeFilePath[0] = '\0';
+  _lastSessionFilePath[0] = '\0';
 }
 
 bool RawSdLogger::begin()
 {
+  Serial.printf("[SD] begin cs=%u root='%s'\n",
+                static_cast<unsigned>(_csPin),
+                _pendingRootPath ? _pendingRootPath : "<null>");
   configureLocalTimezone();
   _spi.begin(PetBionicsPinout::kSpiSck,
              PetBionicsPinout::kSpiMiso,
@@ -293,8 +299,19 @@ bool RawSdLogger::begin()
   _ready = SD.begin(_csPin, _spi);
   if (!_ready)
   {
-    Serial.println("SD.begin failed: card not detected or wiring/CS is wrong");
+    Serial.println("[SD] begin failed: card not detected or wiring/CS is wrong");
     return false;
+  }
+
+  if (_pendingRootPath && _pendingRootPath[0] != '\0')
+  {
+    Serial.printf("[SD] ensuring root folder %s\n", _pendingRootPath);
+    if (!SD.exists(_pendingRootPath) && !SD.mkdir(_pendingRootPath))
+    {
+      Serial.println("[SD] begin failed: could not create pending root folder");
+      _ready = false;
+      return false;
+    }
   }
 
   _lastHealthCheckMs = millis();
@@ -306,22 +323,26 @@ bool RawSdLogger::startSession(uint64_t startEpochMs)
   updateHealth(millis());
   if (!_ready)
   {
-    Serial.println("SD session start failed: logger not ready");
+    Serial.println("[SD] session start failed: logger not ready");
     return false;
   }
 
   char dayFolder[32] = {0};
-  buildDayFolderPath(startEpochMs, dayFolder, sizeof(dayFolder));
+  buildDayFolderPath(_pendingRootPath, startEpochMs, dayFolder, sizeof(dayFolder));
+
+  Serial.printf("[SD] startSession epoch=%llu dayFolder=%s\n",
+                static_cast<unsigned long long>(startEpochMs),
+                dayFolder);
 
   if (dayFolder[0] == '\0')
   {
-    Serial.println("SD session start failed: invalid day folder");
+    Serial.println("[SD] session start failed: invalid day folder");
     return false;
   }
 
   if (!SD.exists(dayFolder) && !SD.mkdir(dayFolder))
   {
-    Serial.println("SD session start failed: could not create day folder");
+    Serial.printf("[SD] session start failed: could not create day folder %s\n", dayFolder);
     return false;
   }
 
@@ -332,6 +353,8 @@ bool RawSdLogger::startSession(uint64_t startEpochMs)
   }
 
   buildSessionPath(_filePath, dayFolder, startEpochMs, runNumber, _activeFilePath, sizeof(_activeFilePath));
+  strncpy(_lastSessionFilePath, _activeFilePath, sizeof(_lastSessionFilePath) - 1);
+  _lastSessionFilePath[sizeof(_lastSessionFilePath) - 1] = '\0';
   _sessionOpen = true;
   _sessionStartEpochMs = startEpochMs;
 
@@ -343,12 +366,15 @@ bool RawSdLogger::startSession(uint64_t startEpochMs)
     return false;
   }
 
-  Serial.printf("SD session file: %s\n", _activeFilePath);
+  Serial.printf("[SD] session file ready: %s\n", _activeFilePath);
   return true;
 }
 
 void RawSdLogger::stopSession()
 {
+  Serial.printf("[SD] stopSession active='%s' last='%s'\n",
+                _activeFilePath,
+                _lastSessionFilePath);
   _sessionOpen = false;
   _sessionStartEpochMs = 0;
   _activeFilePath[0] = '\0';
@@ -363,12 +389,17 @@ void RawSdLogger::updateHealth(uint32_t nowMs)
   }
   _lastHealthCheckMs = nowMs;
 
+  Serial.printf("[SD] health check ready=%s sessionOpen=%s path='%s'\n",
+                _ready ? "true" : "false",
+                _sessionOpen ? "true" : "false",
+                _activeFilePath);
+
   if (_ready)
   {
     if (!isCardPresent() || !canAccessPath(_sessionOpen, _activeFilePath))
     {
       _ready = false;
-      Serial.println("SD health check failed: card/file unavailable");
+      Serial.println("[SD] health check failed: card/file unavailable");
       return;
     }
     return;
@@ -390,7 +421,7 @@ void RawSdLogger::updateHealth(uint32_t nowMs)
     }
     if (_ready)
     {
-      Serial.println("SD logger recovered");
+      Serial.println("[SD] logger recovered");
     }
   }
 }
@@ -400,7 +431,7 @@ bool RawSdLogger::ensureHeader(const char *path, uint64_t startEpochMs)
   if (!path || path[0] == '\0')
   {
     _ready = false;
-    Serial.println("SD header create failed: empty file path");
+    Serial.println("[SD] header create failed: empty file path");
     return false;
   }
 
@@ -413,7 +444,7 @@ bool RawSdLogger::ensureHeader(const char *path, uint64_t startEpochMs)
   if (!file)
   {
     _ready = false;
-    Serial.println("SD header create failed: could not open log file");
+    Serial.println("[SD] header create failed: could not open log file");
     return false;
   }
 
@@ -429,6 +460,10 @@ bool RawSdLogger::append(const RawSample &sample, const EventInfo &event)
 
   if (!_ready || !_sessionOpen || _activeFilePath[0] == '\0')
   {
+    Serial.printf("[SD] append skipped ready=%s sessionOpen=%s path='%s'\n",
+                  _ready ? "true" : "false",
+                  _sessionOpen ? "true" : "false",
+                  _activeFilePath);
     return false;
   }
 
@@ -436,7 +471,7 @@ bool RawSdLogger::append(const RawSample &sample, const EventInfo &event)
   if (!file)
   {
     _ready = false;
-    Serial.println("SD append failed: could not open log file");
+    Serial.println("[SD] append failed: could not open log file");
     return false;
   }
 
@@ -463,7 +498,7 @@ bool RawSdLogger::append(const RawSample &sample, const EventInfo &event)
   if (written <= 0 || written >= static_cast<int>(sizeof(line)))
   {
     file.close();
-    Serial.println("SD append failed: line formatting error");
+    Serial.println("[SD] append failed: line formatting error");
     return false;
   }
 
@@ -472,10 +507,17 @@ bool RawSdLogger::append(const RawSample &sample, const EventInfo &event)
   {
     _ready = false;
     file.close();
-    Serial.println("SD append failed: short write");
+    Serial.println("[SD] append failed: short write");
     return false;
   }
 
   file.close();
+  if ((sample.tLocalUs / 1000ULL) % 1000ULL == 0ULL)
+  {
+    Serial.printf("[SD] appended sample raw=%ld filtered=%.3f file='%s'\n",
+                  static_cast<long>(sample.raw),
+                  sample.filtered,
+                  _activeFilePath);
+  }
   return true;
 }

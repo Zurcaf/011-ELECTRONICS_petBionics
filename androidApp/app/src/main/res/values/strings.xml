@@ -10,10 +10,14 @@
     <string name="state_hx711_unknown">HX711: -</string>
     <string name="state_samples_unknown">Samples: -</string>
     <string name="state_time_sync_unknown">Time sync: -</string>
+    <string name="state_wifi_unknown">WiFi: -</string>
+    <string name="state_cloud_unknown">Cloud config: -</string>
+    <string name="state_sync_unknown">Last sync: -</string>
     <string name="action_connect">Connect to PetBionic</string>
     <string name="action_start">▶ Start</string>
     <string name="action_stop">⏹ Stop</string>
     <string name="action_configure_wifi">⚙ Configure WiFi</string>
+    <string name="action_sync_pending">☁ Sync pending files</string>
     <string name="action_session_history">📋 Session History</string>
     <string name="title_session_history">Session History</string>
     <string name="title_force_over_time">Force over Time</string>

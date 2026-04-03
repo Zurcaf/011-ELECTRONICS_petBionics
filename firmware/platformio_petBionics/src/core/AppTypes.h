@@ -32,6 +32,8 @@ struct AppStatus
   bool sdReady;
   bool imuReady;
   bool hx711Ready;
+  bool wifiConnected;
+  bool cloudConfigured;
   uint32_t samples;
   uint32_t events;
 };

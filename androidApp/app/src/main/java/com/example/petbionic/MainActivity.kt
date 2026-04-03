@@ -29,12 +29,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvHx711State: TextView
     private lateinit var tvSamplesState: TextView
     private lateinit var tvTimeSyncState: TextView
+    private lateinit var tvWifiState: TextView
+    private lateinit var tvCloudState: TextView
+    private lateinit var tvSyncState: TextView
     private lateinit var btnConnect: Button
     private lateinit var btnStart: Button
     private lateinit var btnStop: Button
     private lateinit var btnHistory: Button
     private lateinit var btnWifi: Button
+    private lateinit var btnSync: Button
     private var lastTimeSyncAttemptElapsedMs: Long = 0
+    private var lastCmdAckSeen: String = ""
     private val statusRefreshHandler = Handler(Looper.getMainLooper())
     private val statusRefreshRunnable = object : Runnable {
         override fun run() {
@@ -70,11 +75,15 @@ class MainActivity : AppCompatActivity() {
         tvHx711State = findViewById(R.id.tvHx711State)
         tvSamplesState = findViewById(R.id.tvSamplesState)
         tvTimeSyncState = findViewById(R.id.tvTimeSyncState)
+        tvWifiState = findViewById(R.id.tvWifiState)
+        tvCloudState = findViewById(R.id.tvCloudState)
+        tvSyncState = findViewById(R.id.tvSyncState)
         btnConnect = findViewById(R.id.btnConnect)
         btnStart = findViewById(R.id.btnStart)
         btnStop = findViewById(R.id.btnStop)
         btnHistory = findViewById(R.id.btnHistory)
         btnWifi = findViewById(R.id.btnWifi)
+        btnSync = findViewById(R.id.btnSync)
 
         BleManager.onConnectionChanged = { connected ->
             runOnUiThread {
@@ -131,6 +140,12 @@ class MainActivity : AppCompatActivity() {
         btnWifi.setOnClickListener {
             showWifiDialog()
         }
+
+        btnSync.setOnClickListener {
+            BleManager.sendCommand("SYNC_ALL")
+            tvSyncState.text = "Last sync: Request sent"
+            requestStatusRefreshBurst()
+        }
     }
 
     override fun onResume() {
@@ -172,6 +187,7 @@ class MainActivity : AppCompatActivity() {
         btnStart.isEnabled = connected
         btnStop.isEnabled = connected
         btnWifi.isEnabled = connected
+        btnSync.isEnabled = connected
     }
 
     private fun showWifiDialog() {
@@ -196,8 +212,11 @@ class MainActivity : AppCompatActivity() {
             val ssid = etSsid.text.toString()
             val pass = etPass.text.toString()
             if (ssid.isNotEmpty()) {
-                BleManager.sendCommand("WIFI:$ssid:$pass")
-                Toast.makeText(this, "WiFi credentials sent!", Toast.LENGTH_SHORT).show()
+                BleManager.sendCommand("WIFI_SSID=$ssid")
+                statusRefreshHandler.postDelayed({ BleManager.sendCommand("WIFI_PASS=$pass") }, 140)
+                statusRefreshHandler.postDelayed({ BleManager.sendCommand("WIFI_SAVE") }, 280)
+                requestStatusRefreshBurst()
+                Toast.makeText(this, "WiFi credentials sent", Toast.LENGTH_SHORT).show()
             }
         }
         builder.setNegativeButton("Cancel", null)
@@ -260,12 +279,33 @@ class MainActivity : AppCompatActivity() {
                 val samples = json.optLong("samples", 0)
                 val syncNeeded = json.optBoolean("time_sync_needed", false)
                 val cmdAck = json.optString("cmd_ack", "")
+                val wifi = json.optBoolean("wifi", false)
+                val cloudCfg = json.optBoolean("cloud_cfg", false)
 
-                if (cmdAck.equals("START", ignoreCase = true) ||
-                    cmdAck.equals("STOP", ignoreCase = true)
-                ) {
-                    // When firmware acknowledges a command, pull next status sooner.
-                    requestStatusRefreshBurst()
+                if (cmdAck.isNotBlank() && !cmdAck.equals(lastCmdAckSeen, ignoreCase = true)) {
+                    lastCmdAckSeen = cmdAck
+                    when {
+                        cmdAck.equals("START", ignoreCase = true) ||
+                            cmdAck.equals("STOP", ignoreCase = true) -> {
+                            requestStatusRefreshBurst()
+                        }
+                        cmdAck.startsWith("SYNC_", ignoreCase = true) -> {
+                            val syncText = when {
+                                cmdAck.equals("SYNC_OK", ignoreCase = true) -> "Last sync: Success"
+                                cmdAck.equals("SYNC_NONE", ignoreCase = true) -> "Last sync: No pending files"
+                                cmdAck.equals("SYNC_FAIL", ignoreCase = true) -> "Last sync: Failed"
+                                else -> "Last sync: $cmdAck"
+                            }
+                            tvSyncState.text = syncText
+                        }
+                        cmdAck.startsWith("WIFI_", ignoreCase = true) -> {
+                            tvWifiState.text = when {
+                                cmdAck.equals("WIFI_OK", ignoreCase = true) -> "WiFi: Connected"
+                                cmdAck.equals("WIFI_CONN_FAIL", ignoreCase = true) -> "WiFi: Connection failed"
+                                else -> "WiFi: $cmdAck"
+                            }
+                        }
+                    }
                 }
 
                 val state = if (acq) "Recording" else "Idle"
@@ -292,11 +332,17 @@ class MainActivity : AppCompatActivity() {
                 tvHx711State.text = "HX711: $hx711State"
                 tvSamplesState.text = "Samples: $samples"
                 tvTimeSyncState.text = "Time sync: $syncState"
+                if (!cmdAck.startsWith("WIFI_", ignoreCase = true)) {
+                    tvWifiState.text = "WiFi: " + if (wifi) "Connected" else "Disconnected"
+                }
+                tvCloudState.text = "Cloud config: " + if (cloudCfg) "OK" else "Missing"
+                if (!cmdAck.startsWith("SYNC_", ignoreCase = true)) {
+                    tvSyncState.text = "Last sync: -"
+                }
                 return
             }
         }
 
-        // Some BLE stacks deliver fragmented notify payloads. Handle partial JSON text too.
         if (cleaned.contains("\"acq\"")) {
             val acq = Regex("\"acq\"\\s*:\\s*(true|false)", RegexOption.IGNORE_CASE)
                 .find(cleaned)
@@ -322,6 +368,18 @@ class MainActivity : AppCompatActivity() {
                 ?.getOrNull(1)
                 ?.equals("true", ignoreCase = true)
 
+            val wifi = Regex("\"wifi\"\\s*:\\s*(true|false)", RegexOption.IGNORE_CASE)
+                .find(cleaned)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.equals("true", ignoreCase = true)
+
+            val cloud = Regex("\"cloud_cfg\"\\s*:\\s*(true|false)", RegexOption.IGNORE_CASE)
+                .find(cleaned)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.equals("true", ignoreCase = true)
+
             acq?.let {
                 tvSessionState.text = "State: " + if (it) "Recording" else "Idle"
             }
@@ -336,6 +394,14 @@ class MainActivity : AppCompatActivity() {
 
             hx711?.let {
                 tvHx711State.text = "HX711: " + if (it) "OK" else "Not ready"
+            }
+
+            wifi?.let {
+                tvWifiState.text = "WiFi: " + if (it) "Connected" else "Disconnected"
+            }
+
+            cloud?.let {
+                tvCloudState.text = "Cloud config: " + if (it) "OK" else "Missing"
             }
 
             return
@@ -355,5 +421,8 @@ class MainActivity : AppCompatActivity() {
         tvHx711State.text = "HX711: -"
         tvSamplesState.text = "Samples: -"
         tvTimeSyncState.text = "Time sync: -"
+        tvWifiState.text = "WiFi: -"
+        tvCloudState.text = "Cloud config: -"
+        tvSyncState.text = "Last sync: -"
     }
 }

@@ -125,6 +125,36 @@
                 android:alpha="0.80"
                 android:layout_marginTop="4dp"/>
 
+            <TextView
+                android:id="@+id/tvWifiState"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/state_wifi_unknown"
+                android:textSize="14sp"
+                android:textColor="?attr/colorOnSurface"
+                android:alpha="0.80"
+                android:layout_marginTop="4dp"/>
+
+            <TextView
+                android:id="@+id/tvCloudState"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/state_cloud_unknown"
+                android:textSize="14sp"
+                android:textColor="?attr/colorOnSurface"
+                android:alpha="0.80"
+                android:layout_marginTop="4dp"/>
+
+            <TextView
+                android:id="@+id/tvSyncState"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/state_sync_unknown"
+                android:textSize="14sp"
+                android:textColor="?attr/colorOnSurface"
+                android:alpha="0.80"
+                android:layout_marginTop="4dp"/>
+
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
@@ -172,6 +202,15 @@
         android:layout_marginBottom="12dp"
         android:enabled="false"
         android:backgroundTint="?attr/colorSecondary"/>
+
+    <Button
+        android:id="@+id/btnSync"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:text="@string/action_sync_pending"
+        android:layout_marginBottom="12dp"
+        android:enabled="false"
+        android:backgroundTint="?attr/colorPrimary"/>
 
     <Button
         android:id="@+id/btnHistory"

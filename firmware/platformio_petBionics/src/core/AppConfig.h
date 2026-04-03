@@ -14,4 +14,7 @@ struct AppConfig
 
   uint8_t sdCsPin = PetBionicsPinout::kSdCs;
   const char *sdPath = "/raw_log.csv";
+  const char *sdPendingRoot = "/local_files_only";
+  const char *sdSentRoot = "/files_sent_2_DB";
+  const char *deviceId = "PetBionic_01";
 };
