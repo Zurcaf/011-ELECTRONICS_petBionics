@@ -6,7 +6,7 @@
 
 namespace
 {
-HX711 g_scale;
+  HX711 g_scale;
 } // namespace
 
 RawSensor::RawSensor(uint8_t analogPin)
