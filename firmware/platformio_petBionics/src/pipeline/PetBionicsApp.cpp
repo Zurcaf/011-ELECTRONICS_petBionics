@@ -6,8 +6,8 @@ PetBionicsApp::PetBionicsApp()
       _detector(_config.eventThreshold, _config.eventCooldownMs),
       _logger(_config.sdCsPin, _config.sdPath),
       _ble(_config),
-        _lastSampleUs(0),
-        _wasAcquiring(false),
+      _lastSampleUs(0),
+      _wasAcquiring(false),
       _status{false, false, false, false, 0, 0} {}
 
 void PetBionicsApp::begin()

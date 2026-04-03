@@ -233,12 +233,12 @@ namespace
     snprintf(out,
              outSize,
              "%04d-%02d-%02dT%02d:%02d:%02d.%03luZ",
-         localTm.tm_year + 1900,
-         localTm.tm_mon + 1,
-         localTm.tm_mday,
-         localTm.tm_hour,
-         localTm.tm_min,
-         localTm.tm_sec,
+             localTm.tm_year + 1900,
+             localTm.tm_mon + 1,
+             localTm.tm_mday,
+             localTm.tm_hour,
+             localTm.tm_min,
+             localTm.tm_sec,
              static_cast<unsigned long>(millisPart));
   }
 
@@ -263,9 +263,9 @@ namespace
     snprintf(out,
              outSize,
              "%02d:%02d:%02d.%03lu",
-         localTm.tm_hour,
-         localTm.tm_min,
-         localTm.tm_sec,
+             localTm.tm_hour,
+             localTm.tm_min,
+             localTm.tm_sec,
              static_cast<unsigned long>(millisPart));
   }
 

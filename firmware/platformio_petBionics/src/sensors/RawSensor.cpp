@@ -16,10 +16,10 @@ RawSensor::RawSensor(uint8_t analogPin)
       _hxReady(false),
       _lastImuHealthCheckMs(0),
       _lastHxHealthCheckMs(0),
-    _imuConsecutiveMisses(0),
-    _imuConsecutiveHits(0),
+      _imuConsecutiveMisses(0),
+      _imuConsecutiveHits(0),
       _hxConsecutiveMisses(0),
-  _hxConsecutiveHits(0),
+      _hxConsecutiveHits(0),
       _hxSuspiciousReads(0) {}
 
 void RawSensor::imuWriteRegister(uint8_t reg, uint8_t data)
