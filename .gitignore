@@ -68,6 +68,10 @@ node_modules/
 androidApp/.gradle/
 **/.gradle/*.lock
 **/.gradle/**/*.lock
+androidApp/**/local.properties
+
+# --- Accidental machine-specific path artifacts ---
+firmware/platformio_petBionics/C:/
 
 # --- Keep project assets by default ---
 # (Production gerbers, BOMs, docs, source code remain tracked)
