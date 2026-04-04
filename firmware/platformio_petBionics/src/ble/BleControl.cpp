@@ -5,11 +5,8 @@
 #include <string>
 #include <sys/time.h>
 
-#if __has_include(<BLEDevice.h>)
-#include <BLEDevice.h>
-#include <BLE2902.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
+#if __has_include(<NimBLEDevice.h>)
+#include <NimBLEDevice.h>
 #define PETBIONICS_HAS_BLE 1
 #else
 #define PETBIONICS_HAS_BLE 0
@@ -34,16 +31,18 @@ namespace
   const char *kControlUuid = "14f16001-9d9c-470f-9f6a-6e6fe401a001";
   const char *kStatusUuid = "14f16002-9d9c-470f-9f6a-6e6fe401a001";
 
-  BLEAdvertising *g_advertising = nullptr;
-  BLECharacteristic *g_controlCharacteristic = nullptr;
-  BLECharacteristic *g_statusCharacteristic = nullptr;
+  NimBLEAdvertising *g_advertising = nullptr;
+  NimBLECharacteristic *g_controlCharacteristic = nullptr;
+  NimBLECharacteristic *g_statusCharacteristic = nullptr;
   BleControl *g_instance = nullptr;
 
-  class ServerCallbacks : public BLEServerCallbacks
+  class ServerCallbacks : public NimBLEServerCallbacks
   {
-    void onDisconnect(BLEServer *server) override
+    void onDisconnect(NimBLEServer *server, NimBLEConnInfo &connInfo, int reason) override
     {
       (void)server;
+      (void)connInfo;
+      (void)reason;
       if (g_advertising)
       {
         g_advertising->start();
@@ -51,10 +50,11 @@ namespace
     }
   };
 
-  class ControlCallbacks : public BLECharacteristicCallbacks
+  class ControlCallbacks : public NimBLECharacteristicCallbacks
   {
-    void onWrite(BLECharacteristic *pCharacteristic) override
+    void onWrite(NimBLECharacteristic *pCharacteristic, NimBLEConnInfo &connInfo) override
     {
+      (void)connInfo;
       if (!g_instance || !pCharacteristic)
       {
         return;
@@ -198,23 +198,21 @@ uint64_t BleControl::nowEpochMs(uint32_t nowMs) const
 void BleControl::begin(const char *deviceName)
 {
 #if PETBIONICS_HAS_BLE
-  BLEDevice::init(deviceName);
+  NimBLEDevice::init(deviceName);
 
-  BLEServer *server = BLEDevice::createServer();
+  NimBLEServer *server = NimBLEDevice::createServer();
   server->setCallbacks(new ServerCallbacks());
-  BLEService *service = server->createService(kServiceUuid);
+  NimBLEService *service = server->createService(kServiceUuid);
 
   g_controlCharacteristic = service->createCharacteristic(
-      kControlUuid, BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
+      kControlUuid, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
   g_controlCharacteristic->setCallbacks(new ControlCallbacks());
 
   g_statusCharacteristic = service->createCharacteristic(
-      kStatusUuid, BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_READ);
-  g_statusCharacteristic->addDescriptor(new BLE2902());
+      kStatusUuid, NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ);
   g_statusCharacteristic->setValue(_statusCache.c_str());
 
-  service->start();
-  g_advertising = BLEDevice::getAdvertising();
+  g_advertising = NimBLEDevice::getAdvertising();
   g_advertising->addServiceUUID(kServiceUuid);
   g_advertising->start();
 
@@ -228,7 +226,7 @@ void BleControl::begin(const char *deviceName)
 void BleControl::publishStatus(const AppStatus &status, uint32_t nowMs, bool force)
 {
 #if PETBIONICS_HAS_BLE
-  const uint32_t kStatusPeriodMs = 400;
+  const uint32_t kStatusPeriodMs = 125;
 
   if (!g_statusCharacteristic)
   {
@@ -255,7 +253,6 @@ void BleControl::publishStatus(const AppStatus &status, uint32_t nowMs, bool for
                  "\"sd\":" + (status.sdReady ? "true" : "false") + "," +
                  "\"imu\":" + (status.imuReady ? "true" : "false") + "," +
                  "\"hx711\":" + (status.hx711Ready ? "true" : "false") + "," +
-                 "\"samples\":" + String(status.samples) + "," +
                  "\"events\":" + String(status.events) + "," +
                  "\"uptime_ms\":" + String(nowMs) + "," +
                  "\"time_sync_needed\":" + (_timeSyncRequested ? "true" : "false") + "," +
@@ -279,6 +276,23 @@ void BleControl::publishStatus(const AppStatus &status, uint32_t nowMs, bool for
   (void)status;
   (void)nowMs;
   (void)force;
+#endif
+}
+
+void BleControl::publishRunSummary(const String &summaryJson, uint32_t nowMs)
+{
+#if PETBIONICS_HAS_BLE
+  if (!g_statusCharacteristic || summaryJson.length() == 0)
+  {
+    return;
+  }
+
+  g_statusCharacteristic->setValue(summaryJson.c_str());
+  g_statusCharacteristic->notify();
+  _lastStatusMs = nowMs;
+#else
+  (void)summaryJson;
+  (void)nowMs;
 #endif
 }
 

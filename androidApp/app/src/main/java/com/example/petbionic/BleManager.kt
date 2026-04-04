@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
+import android.util.Log
 import java.util.ArrayDeque
 import java.util.UUID
 
@@ -34,6 +35,8 @@ object BleManager {
     private var statusCharRef: BluetoothGattCharacteristic? = null
     private var lastStatusPayload: String? = null
     private var scanner: BluetoothLeScanner? = null
+    private var statusReadInFlight = false
+    private var statusReadQueued = false
     private val pendingCommands = ArrayDeque<String>()
     private val handler = Handler(Looper.getMainLooper())
     private val stopScanRunnable = Runnable { stopScan() }
@@ -88,6 +91,8 @@ object BleManager {
         cmdChar = null
         statusCharRef = null
         lastStatusPayload = null
+        statusReadInFlight = false
+        statusReadQueued = false
         pendingCommands.clear()
         isConnected = false
         gatt?.disconnect()
@@ -100,7 +105,15 @@ object BleManager {
     fun requestStatusRefresh() {
         val g = gatt ?: return
         val s = statusCharRef ?: return
-        g.readCharacteristic(s)
+        if (statusReadInFlight) {
+            statusReadQueued = true
+            return
+        }
+
+        statusReadInFlight = true
+        if (!g.readCharacteristic(s)) {
+            statusReadInFlight = false
+        }
     }
 
     private fun closeGatt() {
@@ -119,7 +132,11 @@ object BleManager {
             return
         }
 
-        c.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+        c.writeType = if ((c.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0) {
+            BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+        } else {
+            BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+        }
         c.value = command.toByteArray()
         g.writeCharacteristic(c)
     }
@@ -128,7 +145,11 @@ object BleManager {
         val g = gatt ?: return
         val c = cmdChar ?: return
         while (pendingCommands.isNotEmpty()) {
-            c.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            c.writeType = if ((c.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0) {
+                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+            } else {
+                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            }
             c.value = pendingCommands.removeFirst().toByteArray()
             g.writeCharacteristic(c)
         }
@@ -159,15 +180,23 @@ object BleManager {
                 cmdChar = null
                 statusCharRef = null
                 lastStatusPayload = null
+                statusReadInFlight = false
+                statusReadQueued = false
                 pendingCommands.clear()
                 isConnected = true
                 handler.post { onConnectionChanged?.invoke(true) }
-                gatt.discoverServices()
+                // Request larger MTU before service discovery so that large BLE notify
+                // payloads (e.g. run_complete JSON ~200 bytes) are not truncated.
+                // discoverServices() is called from onMtuChanged.
+                Log.d("BleManager", "Connected – requesting MTU 512")
+                gatt.requestMtu(512)
                 return
             }
 
             cmdChar = null
             statusCharRef = null
+            statusReadInFlight = false
+            statusReadQueued = false
             pendingCommands.clear()
             isConnected = false
             closeGatt()
@@ -207,7 +236,7 @@ object BleManager {
             flushPendingCommands()
 
             // Some devices are flaky with notifications; force one immediate read for UI bootstrap.
-            gatt.readCharacteristic(statusChar)
+            requestStatusRefresh()
 
             gatt.setCharacteristicNotification(statusChar, true)
             val descriptor = statusChar.getDescriptor(CCCD_UUID)
@@ -230,9 +259,7 @@ object BleManager {
                     return
                 }
 
-                statusCharRef?.let {
-                    gatt.readCharacteristic(it)
-                }
+                requestStatusRefresh()
             }
         }
 
@@ -242,20 +269,29 @@ object BleManager {
             status: Int
         ) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
+                Log.w("BleManager", "onCharacteristicRead failed status=$status")
                 return
             }
 
             if (STATUS_CHAR_UUIDS.contains(characteristic.uuid)) {
                 val payload = characteristic.value.toString(Charsets.UTF_8)
+                Log.d("BleManager", "READ payload(${payload.length}): $payload")
                 lastStatusPayload = payload
+                statusReadInFlight = false
                 handler.post { onStatusReceived?.invoke(payload) }
+
+                if (statusReadQueued) {
+                    statusReadQueued = false
+                    handler.postDelayed({ requestStatusRefresh() }, 120)
+                }
             }
         }
 
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                return
-            }
+            Log.d("BleManager", "MTU negotiated: $mtu (status=$status)")
+            // Proceed with service discovery regardless – if negotiation failed we
+            // fall back to the default MTU but the connection is still usable.
+            gatt.discoverServices()
         }
 
         override fun onCharacteristicChanged(
@@ -264,8 +300,15 @@ object BleManager {
         ) {
             if (STATUS_CHAR_UUIDS.contains(characteristic.uuid)) {
                 val status = characteristic.value.toString(Charsets.UTF_8)
+                Log.d("BleManager", "NOTIFY payload(${status.length}): $status")
                 lastStatusPayload = status
+                statusReadInFlight = false
                 handler.post { onStatusReceived?.invoke(status) }
+
+                if (statusReadQueued) {
+                    statusReadQueued = false
+                    handler.postDelayed({ requestStatusRefresh() }, 120)
+                }
             }
         }
     }

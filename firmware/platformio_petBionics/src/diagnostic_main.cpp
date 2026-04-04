@@ -108,7 +108,7 @@ namespace
             return;
         }
 
-        RawSample sample{millis(), 0ULL, 1234, 98.76f, 0, 0, 0, 0, 0, 0};
+        RawSample sample{millis(), 0U, 1234ULL, 98, 98.76f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f};
         EventInfo event{true, 45.67f};
         bool appended = sdLogger.append(sample, event);
         Serial.printf("logger.append() -> %s\n", appended ? "OK" : "FAIL");
@@ -122,7 +122,7 @@ namespace
                       config.acquisitionEnabled ? "true" : "false",
                       config.filterAlpha,
                       config.eventThreshold,
-                      static_cast<unsigned long>(config.samplePeriodMs));
+                      static_cast<unsigned long>(config.samplePeriodUs));
 
         bleControl.begin("petBionics-diag");
         bleControl.applyCommand("STOP");
@@ -135,7 +135,7 @@ namespace
                       config.acquisitionEnabled ? "true" : "false",
                       config.filterAlpha,
                       config.eventThreshold,
-                      static_cast<unsigned long>(config.samplePeriodMs));
+                      static_cast<unsigned long>(config.samplePeriodUs));
     }
 
     void runAppSmokeTest()

@@ -13,13 +13,16 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import android.util.Log
 import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TIME_SYNC_RETRY_INTERVAL_MS = 5000L
-        private const val STATUS_REFRESH_INTERVAL_MS = 700L
+        private const val STATUS_REFRESH_INTERVAL_MS = 2000L
+        // Firmware default: 12500 µs = 80 Hz. Use rate to avoid integer-division drift.
+        private const val DISPLAY_SAMPLE_RATE_HZ = 80.0
     }
 
     private lateinit var tvStatus: TextView
@@ -34,7 +37,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnStop: Button
     private lateinit var btnHistory: Button
     private lateinit var btnWifi: Button
+
     private var lastTimeSyncAttemptElapsedMs: Long = 0
+    private var lastSamplesUiValue: Long = -1
+    private var runStartElapsedMs: Long = 0
+    private var latestAcquisitionEnabled: Boolean = false
+    private var pendingSessionCommand: String? = null
+    private var statusJsonBuffer: String = ""
+    private var finalRunDialogShowing: Boolean = false
+
     private val statusRefreshHandler = Handler(Looper.getMainLooper())
     private val statusRefreshRunnable = object : Runnable {
         override fun run() {
@@ -44,6 +55,16 @@ class MainActivity : AppCompatActivity() {
             maybeSendTimeSync(force = false)
             BleManager.requestStatusRefresh()
             statusRefreshHandler.postDelayed(this, STATUS_REFRESH_INTERVAL_MS)
+        }
+    }
+
+    private val samplesInterpolationRunnable = object : Runnable {
+        override fun run() {
+            if (!BleManager.isConnected) {
+                return
+            }
+            updateInterpolatedSamples()
+            statusRefreshHandler.postDelayed(this, 100L)
         }
     }
 
@@ -82,9 +103,16 @@ class MainActivity : AppCompatActivity() {
                 if (connected) {
                     sendCurrentTimeToDevice()
                     startStatusRefreshLoop()
+                    startSamplesInterpolationLoop()
                     Toast.makeText(this, "Connected to PetBionic!", Toast.LENGTH_SHORT).show()
                 } else {
                     stopStatusRefreshLoop()
+                    stopSamplesInterpolationLoop()
+                    // Reset all run state so no phantom run persists after reconnect
+                    pendingSessionCommand = null
+                    latestAcquisitionEnabled = false
+                    runStartElapsedMs = 0
+                    statusJsonBuffer = ""
                     Toast.makeText(this, "Disconnected", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -102,8 +130,11 @@ class MainActivity : AppCompatActivity() {
             BleManager.getLastStatusSnapshot()?.let { renderStatus(it) }
             BleManager.requestStatusRefresh()
             startStatusRefreshLoop()
+            startSamplesInterpolationLoop()
         } else {
             stopStatusRefreshLoop()
+            stopSamplesInterpolationLoop()
+            resetSamplesDisplay()
         }
 
         btnConnect.setOnClickListener {
@@ -115,11 +146,17 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnStart.setOnClickListener {
+            pendingSessionCommand = "START"
+            runStartElapsedMs = 0  // set on firmware ACK, not on click, to avoid BLE latency drift
+            resetSamplesDisplay(initialValue = 0)
+            tvSessionState.text = "State: Starting..."
             BleManager.sendCommand("START")
             requestStatusRefreshBurst()
         }
 
         btnStop.setOnClickListener {
+            pendingSessionCommand = "STOP"
+            tvSessionState.text = "State: Stopping..."
             BleManager.sendCommand("STOP")
             requestStatusRefreshBurst()
         }
@@ -137,12 +174,14 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         if (BleManager.isConnected) {
             startStatusRefreshLoop()
+            startSamplesInterpolationLoop()
         }
     }
 
     override fun onPause() {
         super.onPause()
         stopStatusRefreshLoop()
+        stopSamplesInterpolationLoop()
     }
 
     private fun startStatusRefreshLoop() {
@@ -154,10 +193,243 @@ class MainActivity : AppCompatActivity() {
         statusRefreshHandler.removeCallbacks(statusRefreshRunnable)
     }
 
+    private fun startSamplesInterpolationLoop() {
+        statusRefreshHandler.removeCallbacks(samplesInterpolationRunnable)
+        statusRefreshHandler.post(samplesInterpolationRunnable)
+    }
+
+    private fun stopSamplesInterpolationLoop() {
+        statusRefreshHandler.removeCallbacks(samplesInterpolationRunnable)
+    }
+
     private fun requestStatusRefreshBurst() {
-        BleManager.requestStatusRefresh()
-        statusRefreshHandler.postDelayed({ BleManager.requestStatusRefresh() }, 150)
-        statusRefreshHandler.postDelayed({ BleManager.requestStatusRefresh() }, 450)
+        statusRefreshHandler.postDelayed({ BleManager.requestStatusRefresh() }, 120)
+        statusRefreshHandler.postDelayed({ BleManager.requestStatusRefresh() }, 300)
+    }
+
+    private fun resetSamplesDisplay(initialValue: Long = 0L) {
+        lastSamplesUiValue = initialValue
+        tvSamplesState.text = "Samples: $initialValue"
+    }
+
+    private fun updateInterpolatedSamples() {
+        if (finalRunDialogShowing) {
+            return
+        }
+
+        val runActive = latestAcquisitionEnabled || pendingSessionCommand.equals("START", ignoreCase = true)
+        if (!runActive || runStartElapsedMs <= 0L) {
+            return
+        }
+
+        val elapsedMs = (System.currentTimeMillis() - runStartElapsedMs).coerceAtLeast(0L)
+        val displayValue = (elapsedMs * DISPLAY_SAMPLE_RATE_HZ / 1000.0).toLong()
+        if (displayValue != lastSamplesUiValue) {
+            lastSamplesUiValue = displayValue
+            tvSamplesState.text = "Samples: $displayValue"
+        }
+    }
+
+    private fun maybeSendTimeSync(force: Boolean = false) {
+        val nowElapsed = System.currentTimeMillis()
+        if (!force && (nowElapsed - lastTimeSyncAttemptElapsedMs) < TIME_SYNC_RETRY_INTERVAL_MS) {
+            return
+        }
+        sendCurrentTimeToDevice()
+    }
+
+    private fun sendCurrentTimeToDevice() {
+        val epochMs = System.currentTimeMillis()
+        BleManager.sendCommand("TIME=$epochMs")
+        lastTimeSyncAttemptElapsedMs = System.currentTimeMillis()
+    }
+
+    private fun showFinalRunDialog(json: JSONObject) {
+        if (finalRunDialogShowing) {
+            return
+        }
+
+        Log.i("MainActivity", "showFinalRunDialog: $json")
+        val runName = json.optString("run_name", "run")
+        val samplesFinal = json.optLong("samples_final", json.optLong("samples", 0L))
+        val durationMs = json.optLong("duration_ms", 0L)
+        val imuFailure = json.optBoolean("imu_failure", false)
+        val hx711Failure = json.optBoolean("hx711_failure", false)
+        val sensorFailures = json.optString("sensor_failures", "none")
+        val durationSeconds = durationMs / 1000.0
+
+        val message = buildString {
+            appendLine("Run: $runName")
+            appendLine("Samples finais: $samplesFinal")
+            appendLine("Tempo: ${"%.2f".format(durationSeconds)} s")
+            appendLine("Falha IMU: ${if (imuFailure) "sim" else "não"}")
+            appendLine("Falha Load Cell: ${if (hx711Failure) "sim" else "não"}")
+            appendLine("Falhas sensores: $sensorFailures")
+        }
+
+        finalRunDialogShowing = true
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Fim da run")
+            .setMessage(message)
+            .setCancelable(false)
+            .setPositiveButton("OK") { dialog, _ ->
+                dialog.dismiss()
+                finalRunDialogShowing = false
+                pendingSessionCommand = null
+                latestAcquisitionEnabled = false
+                runStartElapsedMs = 0
+                resetSamplesDisplay(initialValue = 0)
+                BleManager.requestStatusRefresh()
+            }
+            .show()
+    }
+
+    private fun handleStatusJson(json: JSONObject): Boolean {
+        if (json.optBoolean("run_complete", false)) {
+            Log.i("MainActivity", "run_complete received")
+            latestAcquisitionEnabled = false
+            showFinalRunDialog(json)
+            return true
+        }
+
+        val acq = json.optBoolean("acq", false)
+        val sd = json.optBoolean("sd", false)
+        val imu = if (json.has("imu")) json.optBoolean("imu", false) else null
+        val hx711 = if (json.has("hx711")) json.optBoolean("hx711", false) else null
+        val syncNeeded = json.optBoolean("time_sync_needed", false)
+        val cmdAck = json.optString("cmd_ack", "")
+
+        Log.d("MainActivity", "status acq=$acq sd=$sd cmdAck='$cmdAck'")
+        latestAcquisitionEnabled = acq
+
+        // Anchor the interpolation clock to when firmware actually ACKs START,
+        // not to button-press time, so BLE latency doesn't offset the count.
+        if (cmdAck.equals("START", ignoreCase = true)) {
+            runStartElapsedMs = System.currentTimeMillis()
+            Log.i("MainActivity", "START ack received – interpolation clock anchored")
+            resetSamplesDisplay(initialValue = 0)
+        } else if (acq && runStartElapsedMs == 0L) {
+            // Fallback: firmware already recording (e.g. reconnect mid-run)
+            runStartElapsedMs = System.currentTimeMillis()
+            Log.i("MainActivity", "acq=true without ACK – interpolation clock anchored (fallback)")
+        }
+
+        if (cmdAck.equals("START", ignoreCase = true) || acq) {
+            if (pendingSessionCommand.equals("START", ignoreCase = true)) {
+                pendingSessionCommand = null
+            }
+        }
+
+        if (cmdAck.equals("STOP", ignoreCase = true) || !acq) {
+            if (pendingSessionCommand.equals("STOP", ignoreCase = true)) {
+                pendingSessionCommand = null
+            }
+        }
+
+        if (syncNeeded) {
+            maybeSendTimeSync(force = false)
+        }
+
+        val sessionState = when {
+            pendingSessionCommand.equals("START", ignoreCase = true) && !acq -> "Starting..."
+            pendingSessionCommand.equals("STOP", ignoreCase = true) && acq -> "Stopping..."
+            acq -> "Recording"
+            else -> "Idle"
+        }
+
+        tvSessionState.text = "State: $sessionState"
+        tvSdState.text = "SD: " + if (sd) "OK" else "Not ready"
+        tvImuState.text = "IMU: " + when (imu) {
+            true -> "OK"
+            false -> "Not ready"
+            null -> "-"
+        }
+        tvHx711State.text = "HX711: " + when (hx711) {
+            true -> "OK"
+            false -> "Not ready"
+            null -> "-"
+        }
+        tvTimeSyncState.text = "Time sync: " + if (syncNeeded) "Needed" else "OK"
+
+        return true
+    }
+
+    private fun tryConsumeJsonPayloads(cleaned: String): Boolean {
+        if (cleaned.isEmpty()) {
+            return false
+        }
+
+        statusJsonBuffer += cleaned
+        if (statusJsonBuffer.length > 4096) {
+            statusJsonBuffer = statusJsonBuffer.takeLast(4096)
+        }
+
+        var handledAny = false
+        while (true) {
+            val start = statusJsonBuffer.indexOf('{')
+            if (start < 0) {
+                statusJsonBuffer = ""
+                break
+            }
+
+            var depth = 0
+            var end = -1
+            for (i in start until statusJsonBuffer.length) {
+                when (statusJsonBuffer[i]) {
+                    '{' -> depth++
+                    '}' -> {
+                        depth--
+                        if (depth == 0) {
+                            end = i
+                            break
+                        }
+                    }
+                }
+            }
+
+            if (end < 0) {
+                if (start > 0) {
+                    statusJsonBuffer = statusJsonBuffer.substring(start)
+                }
+                break
+            }
+
+            val payload = statusJsonBuffer.substring(start, end + 1)
+            statusJsonBuffer = statusJsonBuffer.substring(end + 1)
+            val parsed = runCatching { JSONObject(payload) }.getOrNull() ?: continue
+            if (handleStatusJson(parsed)) {
+                handledAny = true
+            }
+        }
+
+        return handledAny
+    }
+
+    private fun renderStatus(status: String) {
+        val cleaned = status.replace("\u0000", "").trim()
+        Log.d("MainActivity", "renderStatus(${cleaned.length}): ${cleaned.take(120)}")
+
+        if (tryConsumeJsonPayloads(cleaned)) {
+            return
+        }
+
+        // If the string looks like a JSON fragment (starts with '{' or '"'), it's already
+        // been buffered by tryConsumeJsonPayloads waiting for the rest – don't show it.
+        if (cleaned.startsWith("{") || cleaned.startsWith("\"")) {
+            Log.d("MainActivity", "renderStatus: buffered JSON fragment, skipping UI update")
+            return
+        }
+
+        // Legacy plain-text status from older firmware builds.
+        val legacyState = when {
+            cleaned.contains("recording", ignoreCase = true) -> "Recording"
+            cleaned.contains("syncing", ignoreCase = true) -> "Syncing to cloud"
+            cleaned.contains("done", ignoreCase = true) -> "Sync complete"
+            cleaned.contains("idle", ignoreCase = true) -> "Idle"
+            cleaned.contains("sync_failed", ignoreCase = true) -> "Sync failed"
+            else -> return  // unknown string – ignore rather than display garbage
+        }
+        tvSessionState.text = "State: $legacyState"
     }
 
     private fun updateUI(connected: Boolean) {
@@ -226,134 +498,5 @@ class MainActivity : AppCompatActivity() {
     private fun startBLEScan() {
         Toast.makeText(this, "Scanning for PetBionic...", Toast.LENGTH_SHORT).show()
         BleManager.startScan()
-    }
-
-    private fun sendCurrentTimeToDevice() {
-        val epochMs = System.currentTimeMillis()
-        BleManager.sendCommand("TIME=$epochMs")
-        lastTimeSyncAttemptElapsedMs = System.currentTimeMillis()
-    }
-
-    private fun maybeSendTimeSync(force: Boolean = false) {
-        val nowElapsed = System.currentTimeMillis()
-        if (!force && (nowElapsed - lastTimeSyncAttemptElapsedMs) < TIME_SYNC_RETRY_INTERVAL_MS) {
-            return
-        }
-        sendCurrentTimeToDevice()
-    }
-
-    private fun renderStatus(status: String) {
-        val cleaned = status.replace("\u0000", "").trim()
-        val jsonPayload = run {
-            val start = cleaned.indexOf('{')
-            val end = cleaned.lastIndexOf('}')
-            if (start >= 0 && end > start) cleaned.substring(start, end + 1) else null
-        }
-
-        if (jsonPayload != null) {
-            runCatching {
-                val json = JSONObject(jsonPayload)
-                val acq = json.optBoolean("acq", false)
-                val sd = json.optBoolean("sd", false)
-                val imu = if (json.has("imu")) json.optBoolean("imu", false) else null
-                val hx711 = if (json.has("hx711")) json.optBoolean("hx711", false) else null
-                val samples = json.optLong("samples", 0)
-                val syncNeeded = json.optBoolean("time_sync_needed", false)
-                val cmdAck = json.optString("cmd_ack", "")
-
-                if (cmdAck.equals("START", ignoreCase = true) ||
-                    cmdAck.equals("STOP", ignoreCase = true)
-                ) {
-                    // When firmware acknowledges a command, pull next status sooner.
-                    requestStatusRefreshBurst()
-                }
-
-                val state = if (acq) "Recording" else "Idle"
-                val sdState = if (sd) "OK" else "Not ready"
-                val imuState = when (imu) {
-                    true -> "OK"
-                    false -> "Not ready"
-                    null -> "-"
-                }
-                val hx711State = when (hx711) {
-                    true -> "OK"
-                    false -> "Not ready"
-                    null -> "-"
-                }
-                val syncState = if (syncNeeded) "Needed" else "OK"
-
-                if (syncNeeded) {
-                    maybeSendTimeSync(force = false)
-                }
-
-                tvSessionState.text = "State: $state"
-                tvSdState.text = "SD: $sdState"
-                tvImuState.text = "IMU: $imuState"
-                tvHx711State.text = "HX711: $hx711State"
-                tvSamplesState.text = "Samples: $samples"
-                tvTimeSyncState.text = "Time sync: $syncState"
-                return
-            }
-        }
-
-        // Some BLE stacks deliver fragmented notify payloads. Handle partial JSON text too.
-        if (cleaned.contains("\"acq\"")) {
-            val acq = Regex("\"acq\"\\s*:\\s*(true|false)", RegexOption.IGNORE_CASE)
-                .find(cleaned)
-                ?.groupValues
-                ?.getOrNull(1)
-                ?.equals("true", ignoreCase = true)
-
-            val sd = Regex("\"sd\"\\s*:\\s*(true|false)", RegexOption.IGNORE_CASE)
-                .find(cleaned)
-                ?.groupValues
-                ?.getOrNull(1)
-                ?.equals("true", ignoreCase = true)
-
-            val imu = Regex("\"imu\"\\s*:\\s*(true|false)", RegexOption.IGNORE_CASE)
-                .find(cleaned)
-                ?.groupValues
-                ?.getOrNull(1)
-                ?.equals("true", ignoreCase = true)
-
-            val hx711 = Regex("\"hx711\"\\s*:\\s*(true|false)", RegexOption.IGNORE_CASE)
-                .find(cleaned)
-                ?.groupValues
-                ?.getOrNull(1)
-                ?.equals("true", ignoreCase = true)
-
-            acq?.let {
-                tvSessionState.text = "State: " + if (it) "Recording" else "Idle"
-            }
-
-            sd?.let {
-                tvSdState.text = "SD: " + if (it) "OK" else "Not ready"
-            }
-
-            imu?.let {
-                tvImuState.text = "IMU: " + if (it) "OK" else "Not ready"
-            }
-
-            hx711?.let {
-                tvHx711State.text = "HX711: " + if (it) "OK" else "Not ready"
-            }
-
-            return
-        }
-
-        val legacyState = when {
-            cleaned.contains("recording", ignoreCase = true) -> "Recording"
-            cleaned.contains("syncing", ignoreCase = true) -> "Syncing to cloud"
-            cleaned.contains("done", ignoreCase = true) -> "Sync complete"
-            cleaned.contains("idle", ignoreCase = true) -> "Idle"
-            cleaned.contains("sync_failed", ignoreCase = true) -> "Sync failed"
-            else -> cleaned
-        }
-        tvSessionState.text = "State: $legacyState"
-        tvSdState.text = "SD: -"
-        tvImuState.text = "IMU: -"
-        tvHx711State.text = "HX711: -"
-        tvSamplesState.text = "Samples: -"
-        tvTimeSyncState.text = "Time sync: -"
     }
 }

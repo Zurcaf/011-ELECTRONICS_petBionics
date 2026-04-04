@@ -162,6 +162,9 @@ void RawSensor::updateHealth(uint32_t nowMs)
     if (g_scale.wait_ready_timeout(10))
     {
       const long raw = g_scale.read();
+      // 0 and -1 indicate missing/stuck output; 8388607 and -8388608 are the
+      // maximum positive and negative values of the HX711's 24-bit signed ADC,
+      // meaning the input is railed/saturated.
       const bool suspicious = (raw == 0L || raw == -1L || raw == 8388607L || raw == -8388608L);
 
       _hxConsecutiveMisses = 0;

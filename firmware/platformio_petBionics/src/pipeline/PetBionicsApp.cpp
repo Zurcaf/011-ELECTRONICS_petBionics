@@ -1,5 +1,21 @@
 #include "PetBionicsApp.h"
 
+#include <cstring>
+
+namespace
+{
+  const char *basenameFromPath(const char *path)
+  {
+    if (!path || !*path)
+    {
+      return "run";
+    }
+
+    const char *lastSlash = strrchr(path, '/');
+    return lastSlash ? lastSlash + 1 : path;
+  }
+} // namespace
+
 PetBionicsApp::PetBionicsApp()
     : _sensor(_config.analogPin),
       _filter(_config.filterAlpha),
@@ -8,7 +24,14 @@ PetBionicsApp::PetBionicsApp()
       _ble(_config),
       _lastSampleUs(0),
       _wasAcquiring(false),
-      _status{false, false, false, false, 0, 0} {}
+      _status{false, false, false, false, 0, 0},
+      _runStartLocalMs(0),
+      _runStartEpochMs(0),
+      _runImuFailureSeen(false),
+      _runHx711FailureSeen(false)
+{
+  _runName[0] = '\0';
+}
 
 void PetBionicsApp::begin()
 {
@@ -48,11 +71,18 @@ void PetBionicsApp::update()
       _lastSampleUs = nowUs;
       _status.samples = 0;
       _status.events = 0;
-      const uint64_t startEpochMs = _ble.currentEpochMs(nowMs);
-      if (!_logger.startSession(startEpochMs))
+      _runStartLocalMs = nowMs;
+      _runStartEpochMs = _ble.currentEpochMs(nowMs);
+      _runImuFailureSeen = !_sensor.isImuReady();
+      _runHx711FailureSeen = !_sensor.isHx711Ready();
+      _orientation.reset();
+      if (!_logger.startSession(_runStartEpochMs))
       {
         Serial.println("Failed to start SD log session");
       }
+      const char *activePath = _logger.activeFilePath();
+      strncpy(_runName, basenameFromPath(activePath), sizeof(_runName) - 1);
+      _runName[sizeof(_runName) - 1] = '\0';
       _wasAcquiring = true;
     }
 
@@ -74,7 +104,7 @@ void PetBionicsApp::update()
   {
     if (_wasAcquiring)
     {
-      _logger.stopSession();
+      finalizeRun(nowMs);
     }
     _wasAcquiring = false;
   }
@@ -107,12 +137,78 @@ void PetBionicsApp::sampleStep(uint32_t nowMs, uint32_t nowUs)
   float filtered = _filter.update(static_cast<float>(raw));
   EventInfo event = _detector.update(static_cast<float>(raw), filtered, nowMs);
 
-  RawSample sample{nowMs, nowUs, epochMs, raw, filtered, ax, ay, az, gx, gy, gz, mx, my, mz};
+  const float dtSeconds = static_cast<float>(_config.samplePeriodUs) / 1000000.0f;
+  const Orientation orient = _orientation.update(ax, ay, az, gx, gy, gz, mx, my, mz, dtSeconds);
+
+  RawSample sample{nowMs, nowUs, epochMs, raw, filtered,
+                   ax, ay, az, gx, gy, gz, mx, my, mz,
+                   orient.roll, orient.pitch, orient.yaw};
   _logger.append(sample, event);
 
   _status.samples++;
+  if (!_sensor.isImuReady())
+  {
+    _runImuFailureSeen = true;
+  }
+  if (!_sensor.isHx711Ready())
+  {
+    _runHx711FailureSeen = true;
+  }
   if (event.triggered)
   {
     _status.events++;
   }
+}
+
+const char *PetBionicsApp::sessionRunName() const
+{
+  return _runName[0] != '\0' ? _runName : "run";
+}
+
+void PetBionicsApp::finalizeRun(uint32_t nowMs)
+{
+  char failures[64];
+  failures[0] = '\0';
+  bool firstFailure = true;
+
+  if (_runImuFailureSeen)
+  {
+    strncat(failures, "IMU", sizeof(failures) - strlen(failures) - 1);
+    firstFailure = false;
+  }
+  if (_runHx711FailureSeen)
+  {
+    if (!firstFailure)
+    {
+      strncat(failures, ", ", sizeof(failures) - strlen(failures) - 1);
+    }
+    strncat(failures, "Load Cell", sizeof(failures) - strlen(failures) - 1);
+  }
+  if (failures[0] == '\0')
+  {
+    strncpy(failures, "none", sizeof(failures) - 1);
+    failures[sizeof(failures) - 1] = '\0';
+  }
+
+  const uint32_t durationMs = (nowMs >= _runStartLocalMs) ? (nowMs - _runStartLocalMs) : 0;
+
+  char summary[384];
+  snprintf(summary,
+           sizeof(summary),
+           "{\"run_complete\":true,\"run_name\":\"%s\",\"samples_final\":%lu,\"duration_ms\":%lu,\"imu_failure\":%s,\"hx711_failure\":%s,\"sensor_failures\":\"%s\"}",
+           sessionRunName(),
+           static_cast<unsigned long>(_status.samples),
+           static_cast<unsigned long>(durationMs),
+           _runImuFailureSeen ? "true" : "false",
+           _runHx711FailureSeen ? "true" : "false",
+           failures);
+
+  _logger.stopSession();
+  _ble.publishRunSummary(String(summary), nowMs);
+
+  _runName[0] = '\0';
+  _runStartLocalMs = 0;
+  _runStartEpochMs = 0;
+  _runImuFailureSeen = false;
+  _runHx711FailureSeen = false;
 }

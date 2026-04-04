@@ -11,6 +11,7 @@ public:
   explicit BleControl(AppConfig &config);
   void begin(const char *deviceName = "PetBionic");
   void updateStatus(const AppStatus &status, uint32_t nowMs);
+  void publishRunSummary(const String &summaryJson, uint32_t nowMs);
   void applyCommand(const String &cmd);
   uint64_t currentEpochMs(uint32_t nowMs) const;
 

@@ -18,6 +18,10 @@ struct RawSample
   int16_t mx;
   int16_t my;
   int16_t mz;
+  // Orientation computed by OrientationEstimator (complementary filter)
+  float roll;  // degrees
+  float pitch; // degrees
+  float yaw;   // degrees [0, 360)
 };
 
 struct EventInfo
