@@ -310,6 +310,41 @@ void BleControl::updateStatus(const AppStatus &status, uint32_t nowMs)
   publishStatus(status, nowMs, importantChange);
 }
 
+// added in v1.1.0 to support WIFI=ssid:password command to set WiFi credentials over BLE
+bool BleControl::tryApplyWifiCommand(const String &cmd)
+{
+    if (!cmd.startsWith("WIFI=")) return false;
+
+    String payload = cmd.substring(5);
+    payload.trim();
+    if (payload.length() == 0) {
+        Serial.println("[BLE RX] WIFI ignored: empty payload");
+        return true;
+    }
+
+    int colonPos = payload.indexOf(':');
+    String ssid     = (colonPos < 0) ? payload : payload.substring(0, colonPos);
+    String password = (colonPos < 0) ? ""       : payload.substring(colonPos + 1);
+
+    if (ssid.length() == 0) {
+        Serial.println("[BLE RX] WIFI ignored: empty SSID");
+        return true;
+    }
+    if (ssid.length() >= kWifiSsidMaxLen || password.length() >= kWifiPasswordMaxLen) {
+        Serial.println("[BLE RX] WIFI ignored: credentials too long");
+        return true;
+    }
+
+    strncpy(_config.wifiSsid,     ssid.c_str(),     kWifiSsidMaxLen - 1);
+    strncpy(_config.wifiPassword, password.c_str(), kWifiPasswordMaxLen - 1);
+    _config.wifiSsid[kWifiSsidMaxLen - 1]        = '\0';
+    _config.wifiPassword[kWifiPasswordMaxLen - 1] = '\0';
+    _config.wifiEnabled = true;
+
+    Serial.printf("[BLE RX] WIFI credentials stored — SSID='%s'\n", _config.wifiSsid);
+    return true;
+}
+
 void BleControl::applyCommand(const String &cmd)
 {
   const uint32_t nowMs = millis();
@@ -336,6 +371,13 @@ void BleControl::applyCommand(const String &cmd)
   if (tryApplyTimeCommand(cmd))
   {
     acknowledgeCommand("TIME", nowMs);
+    return;
+  }
+
+  //Added in v1.1.0: support for WIFI=ssid:password command to set WiFi credentials over BLE
+  if (tryApplyWifiCommand(cmd))
+  {
+    acknowledgeCommand("WIFI", nowMs);
     return;
   }
 
