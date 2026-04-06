@@ -33,4 +33,6 @@ struct AppConfig
     volatile int syncResultCode     = 0;
     // Number of files successfully uploaded in the last sync-all pass.
     volatile int syncSentCount      = 0;
+    // Set by sync task when done; main loop must restart BLE advertising.
+    volatile bool bleRestartNeeded  = false;
 };

@@ -3,8 +3,9 @@
 #include <cstring>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-// #include "../wifi/WifiManager.h"
-// #include "../sync/FirestoreSync.h"
+#include <BLEDevice.h>
+#include "../wifi/WifiManager.h"
+#include "../sync/FirestoreSync.h"
 
 namespace
 {
@@ -31,32 +32,30 @@ struct SyncTaskParams
 
 void firestoreSyncTask(void *arg)
 {
-    // WiFi/Firestore disabled to reduce firmware size
     auto *p = static_cast<SyncTaskParams *>(arg);
-    // WifiManager   wifi;
-    // FirestoreSync sync;
+    WifiManager   wifi;
+    FirestoreSync sync;
 
-    // if (wifi.connect(p->creds.ssid, p->creds.password))
-    // {
-    //     SyncResult r = sync.syncFile(p->filePath, String(p->sessionId));
-    //     if (r.success)
-    //     {
-    //         p->logger->markAsSent(p->filePath);
-    //         p->config->syncResultCode = 1;
-    //     }
-    //     else
-    //     {
-    //         Serial.printf("[Sync] Failed (HTTP %d) — data safe on SD\n", r.httpErrorCode);
-    //         p->config->syncResultCode = 2;
-    //     }
-    //     wifi.disconnect();
-    // }
-    // else
-    // {
-    //     Serial.println("[Sync] WiFi connect failed — data safe on SD");
-    //     p->config->syncResultCode = 2;
-    // }
-    p->config->syncResultCode = 2;  // Mark as failed to disable sync
+    if (wifi.connect(p->creds.ssid, p->creds.password))
+    {
+        SyncResult r = sync.syncFile(p->filePath, String(p->sessionId));
+        if (r.success)
+        {
+            p->logger->markAsSent(p->filePath);
+            p->config->syncResultCode = 1;
+        }
+        else
+        {
+            Serial.printf("[Sync] Failed (HTTP %d) — data safe on SD\n", r.httpErrorCode);
+            p->config->syncResultCode = 2;
+        }
+        wifi.disconnect();
+    }
+    else
+    {
+        Serial.println("[Sync] WiFi connect failed — data safe on SD");
+        p->config->syncResultCode = 2;
+    }
 
     delete p;
     vTaskDelete(nullptr);
@@ -83,8 +82,6 @@ static bool isCsvFile(const char *name)
 
 // Walk /inbox/<day>/<file>.csv and sync each one.
 // Returns the number of files successfully uploaded.
-// DISABLED: WiFi/Firestore removed to reduce firmware size
-/*
 static int syncAllInbox(FirestoreSync &sync, RawSdLogger *logger)
 {
     int synced = 0;
@@ -143,30 +140,35 @@ static int syncAllInbox(FirestoreSync &sync, RawSdLogger *logger)
     inbox.close();
     return synced;
 }
-*/
 
 void firestoreSyncAllTask(void *arg)
 {
-    // WiFi/Firestore disabled to reduce firmware size
     auto *p = static_cast<SyncAllTaskParams *>(arg);
-    // WifiManager   wifi;
-    // FirestoreSync sync;
+    WifiManager   wifi;
+    FirestoreSync sync;
 
-    // if (!wifi.connect(p->creds.ssid, p->creds.password))
-    // {
-    //     Serial.println("[SyncAll] WiFi connect failed");
-    //     p->config->syncResultCode = 2; // fail
-    //     delete p;
-    //     vTaskDelete(nullptr);
-    //     return;
-    // }
+    // Free BLE heap so TLS handshake (~40 KB) has room to allocate.
+    Serial.println("[SyncAll] Deinit BLE to free heap for TLS...");
+    BLEDevice::deinit(true);
+    delay(100);
 
-    // int sent = syncAllInbox(sync, p->logger);
-    // wifi.disconnect();
+    if (!wifi.connect(p->creds.ssid, p->creds.password))
+    {
+        Serial.println("[SyncAll] WiFi connect failed");
+        p->config->syncResultCode  = 2;
+        p->config->bleRestartNeeded = true;
+        delete p;
+        vTaskDelete(nullptr);
+        return;
+    }
 
-    p->config->syncSentCount  = 0;
-    p->config->syncResultCode = 2; // Always fail
-    Serial.println("[SyncAll] WiFi/Firestore disabled");
+    int sent = syncAllInbox(sync, p->logger);
+    wifi.disconnect();
+
+    p->config->syncSentCount    = sent;
+    p->config->syncResultCode   = (sent > 0) ? 1 : 5;
+    p->config->bleRestartNeeded = true;  // signal main loop to restart BLE
+    Serial.printf("[SyncAll] Done — %d files uploaded\n", sent);
 
     delete p;
     vTaskDelete(nullptr);
@@ -376,6 +378,15 @@ void PetBionicsApp::update()
         {
             Serial.println("[App] Sync-all task started");
         }
+    }
+
+    // ── Restart BLE after sync task freed it ─────────────────────────────
+    if (_config.bleRestartNeeded)
+    {
+        _config.bleRestartNeeded = false;
+        Serial.println("[App] Restarting BLE after sync...");
+        _ble.begin("PetBionic");
+        Serial.println("[App] BLE restarted");
     }
 
     // ── Report sync result to BLE app ─────────────────────────────────────
