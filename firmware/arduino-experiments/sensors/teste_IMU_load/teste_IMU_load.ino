@@ -3,13 +3,16 @@
 
 // ================= ESP32-C3 PINOUT =================
 // You can change if needed
-#define PIN_SPI_SCK   D9
-#define PIN_SPI_MISO  D10
-#define PIN_SPI_MOSI  D8
-#define PIN_CS_IMU    D5
 
-#define PIN_HX_DT  D4
-#define PIN_HX_SCK D3
+#define PIN_SPI_SCK   D6
+#define PIN_SPI_MISO  D5
+#define PIN_SPI_MOSI  D4
+#define PIN_CS_SD     D8
+
+#define PIN_CS_IMU    D7
+
+#define PIN_HX_DT  D10
+#define PIN_HX_SCK D9
 
 SPIClass SPIbus(FSPI);
 HX711 scale;
@@ -106,7 +109,7 @@ void setup() {
 }
 
 void loop() {
-  // readIMU();
+  readIMU();
   readLoadCell();
   delay(100);
 }
