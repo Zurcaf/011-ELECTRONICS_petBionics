@@ -63,6 +63,11 @@ hardware/pcb/backups/PetBionic_PCB-backups/PetBionic_PCB-*.zip
 
 # --- Package manager caches ---
 node_modules/
+androidApp/.gradle/
+
+# --- Local docs drafts / exports (not for commits) ---
+0.documentation/*Autosaved*.pptx
+0.documentation/*Photoroom*.png
 
 # --- Keep project assets by default ---
 # (Production gerbers, BOMs, docs, source code remain tracked)
