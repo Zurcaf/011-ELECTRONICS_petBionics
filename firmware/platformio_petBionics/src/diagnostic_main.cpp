@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <SD.h>
 
-#include "ble/BleControl.h"
 #include "core/AppConfig.h"
 #include "core/Pinout.h"
 #include "core/AppTypes.h"
@@ -18,7 +17,6 @@ namespace
     LightFilter lightFilter(0.2f);
     SimpleEventDetector eventDetector(100.0f, 300);
     RawSdLogger sdLogger(config.sdCsPin, "/diag_raw_log.csv");
-    BleControl bleControl(config);
 
     void printMenu()
     {
@@ -28,8 +26,7 @@ namespace
         Serial.println("2 - LightFilter");
         Serial.println("3 - SimpleEventDetector");
         Serial.println("4 - RawSdLogger");
-        Serial.println("5 - BleControl");
-        Serial.println("6 - Full app smoke test");
+        Serial.println("5 - Full app smoke test");
         Serial.println("m - show menu");
     }
 
@@ -108,34 +105,10 @@ namespace
             return;
         }
 
-        RawSample sample{millis(), 0U, 1234ULL, 98, 98.76f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f};
+        RawSample sample{millis(), 0U, 0ULL, 98, 98.76f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f};
         EventInfo event{true, 45.67f};
         bool appended = sdLogger.append(sample, event);
         Serial.printf("logger.append() -> %s\n", appended ? "OK" : "FAIL");
-    }
-
-    void runBleControlTest()
-    {
-        Serial.println();
-        Serial.println("[TEST] BleControl");
-        Serial.printf("before: acq=%s alpha=%.3f thr=%.2f period=%lu\n",
-                      config.acquisitionEnabled ? "true" : "false",
-                      config.filterAlpha,
-                      config.eventThreshold,
-                      static_cast<unsigned long>(config.samplePeriodUs));
-
-        bleControl.begin("petBionics-diag");
-        bleControl.applyCommand("STOP");
-        bleControl.applyCommand("ALPHA=0.35");
-        bleControl.applyCommand("THR=42.5");
-        bleControl.applyCommand("PERIOD=50");
-        bleControl.applyCommand("START");
-
-        Serial.printf("after:  acq=%s alpha=%.3f thr=%.2f period=%lu\n",
-                      config.acquisitionEnabled ? "true" : "false",
-                      config.filterAlpha,
-                      config.eventThreshold,
-                      static_cast<unsigned long>(config.samplePeriodUs));
     }
 
     void runAppSmokeTest()
@@ -169,9 +142,6 @@ namespace
             runSdLoggerTest();
             break;
         case '5':
-            runBleControlTest();
-            break;
-        case '6':
             runAppSmokeTest();
             break;
         case 'm':
@@ -196,7 +166,7 @@ void setup()
 
     rawSensor.begin();
     printMenu();
-    Serial.println("Change the active test by sending 1..6 over serial.");
+    Serial.println("Change the active test by sending 1..5 over serial.");
 }
 
 void loop()

@@ -20,7 +20,10 @@ RawSensor::RawSensor(uint8_t analogPin)
       _imuConsecutiveHits(0),
       _hxConsecutiveMisses(0),
       _hxConsecutiveHits(0),
-      _hxSuspiciousReads(0) {}
+      _hxSuspiciousReads(0),
+      _magSingleMeasurementMode(false)
+{
+}
 
 void RawSensor::imuWriteRegister(uint8_t reg, uint8_t data)
 {
@@ -94,16 +97,37 @@ void RawSensor::begin()
   {
     imuWriteRegister(kUserCtrlReg, 0x20);
     delay(10);
-    imuWriteRegister(kI2cMstCtrlReg, 0x0D);
+    imuWriteRegister(kI2cMstCtrlReg, 0x00); // Fast I2C clock (348 kHz)
     delay(10);
 
     uint8_t akWhoAmI = 0;
     if (akReadBytes(kAkWhoAmIReg, 1, &akWhoAmI) && akWhoAmI == kAkWhoAmIValue)
     {
-      akWriteRegister(kAkCntl1Reg, 0x00);
-      delay(10);
-      akWriteRegister(kAkCntl1Reg, 0x16);
-      delay(10);
+      Serial.printf("[Mag] AK8963 detected (WHO_AM_I=0x%02x)\n", akWhoAmI);
+
+      // Try to set continuous mode
+      akWriteRegister(kAkCntl1Reg, 0x00); // Power down
+      delay(30);
+      akWriteRegister(kAkCntl1Reg, 0x16); // Continuous 16-bit 100Hz
+      delay(30);
+
+      // Verify the mode was set
+      uint8_t cntl1 = 0;
+      akReadBytes(kAkCntl1Reg, 1, &cntl1);
+      Serial.printf("[Mag] CNTL1 after write: 0x%02x (expected 0x16)\n", cntl1);
+
+      if (cntl1 != 0x16)
+      {
+        Serial.println("[Mag] Continuous mode write failed → using single measurement mode");
+        _magSingleMeasurementMode = true;
+        akWriteRegister(kAkCntl1Reg, 0x12); // Single measurement, 16-bit
+        delay(10);
+      }
+    }
+    else
+    {
+      Serial.printf("[Mag] AK8963 detection failed (WHO_AM_I=0x%02x, expected 0x%02x)\n",
+                    akWhoAmI, kAkWhoAmIValue);
     }
   }
 
@@ -231,11 +255,20 @@ bool RawSensor::readImuAxes(int16_t &ax, int16_t &ay, int16_t &az,
   gz = static_cast<int16_t>((raw[12] << 8) | raw[13]);
 
   uint8_t magRaw[8] = {0};
+
+  // In single measurement mode, trigger a new measurement before reading
+  if (_magSingleMeasurementMode)
+  {
+    akWriteRegister(kAkCntl1Reg, 0x12); // Single measurement, 16-bit
+    delay(10);                          // AK8963 needs ~5ms to complete measurement
+  }
+
   if (akReadBytes(kAkSt1Reg, sizeof(magRaw), magRaw))
   {
     const bool dataReady = (magRaw[0] & 0x01) != 0;
     const bool overflow = (magRaw[7] & 0x08) != 0;
-    if (dataReady && !overflow)
+
+    if (!overflow)
     {
       mx = static_cast<int16_t>((magRaw[2] << 8) | magRaw[1]);
       my = static_cast<int16_t>((magRaw[4] << 8) | magRaw[3]);

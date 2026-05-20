@@ -48,6 +48,7 @@ private:
   uint8_t _hxConsecutiveMisses;
   uint8_t _hxConsecutiveHits;
   uint8_t _hxSuspiciousReads;
+  bool _magSingleMeasurementMode; // Fallback when continuous mode doesn't work
 
   void imuWriteRegister(uint8_t reg, uint8_t data);
   void imuReadBytes(uint8_t reg, uint8_t count, uint8_t *dest);

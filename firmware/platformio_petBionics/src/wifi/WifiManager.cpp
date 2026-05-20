@@ -1,51 +1,36 @@
 #include "WifiManager.h"
-#include <WiFi.h>
 
-bool WifiManager::connect(const char *ssid, const char *password)
+bool WifiManager::connect(const char *ssid, const char *password, uint32_t timeoutMs)
 {
-    if (isConnected())
-    {
-        return true;
-    }
-
     if (!ssid || ssid[0] == '\0')
     {
-        Serial.println("[WiFi] No SSID configured — skipping connect");
+        Serial.println("[WiFi] No SSID configured — skipping");
         return false;
     }
 
-    Serial.printf("[WiFi] Connecting to '%s'...\n", ssid);
+    Serial.printf("[WiFi] Connecting to %s", ssid);
     WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, (password && password[0] != '\0') ? password : nullptr);
+    WiFi.begin(ssid, password);
 
-    const uint32_t deadline = millis() + kWifiConnectTimeoutMs;
-    while (WiFi.status() != WL_CONNECTED && millis() < deadline)
+    const uint32_t start = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - start) < timeoutMs)
     {
-        delay(200);
+        delay(250);
+        Serial.print(".");
+    }
+    Serial.println();
+
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        Serial.println("[WiFi] Connection failed");
+        return false;
     }
 
-    if (WiFi.status() == WL_CONNECTED)
-    {
-        Serial.printf("[WiFi] Connected — IP: %s\n", WiFi.localIP().toString().c_str());
-        return true;
-    }
-
-    Serial.printf("[WiFi] Failed (status %d)\n", static_cast<int>(WiFi.status()));
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    return false;
+    Serial.printf("[WiFi] Connected — http://%s\n", WiFi.localIP().toString().c_str());
+    return true;
 }
 
-void WifiManager::disconnect()
+IPAddress WifiManager::localIP() const
 {
-    WiFi.disconnect(true);
-    delay(200);
-    WiFi.mode(WIFI_OFF);
-    delay(200);
-    Serial.println("[WiFi] Disconnected");
-}
-
-bool WifiManager::isConnected() const
-{
-    return WiFi.status() == WL_CONNECTED;
+    return WiFi.localIP();
 }

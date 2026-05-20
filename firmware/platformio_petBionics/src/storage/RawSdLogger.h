@@ -19,14 +19,9 @@ public:
   bool append(const RawSample &sample, const EventInfo &event);
   const char *activeFilePath() const { return _activeFilePath; }
 
-  // Call after a successful Firebase upload to move the file from inbox/ to sent/.
-  // Returns true if the file was moved successfully.
-  bool markAsSent(const char *filePath);
-
 private:
   static constexpr uint16_t kFlushEveryN = 80;          // flush once per second at 80 Hz
-  static constexpr const char *kInboxFolder = "/inbox"; // runs waiting to be uploaded
-  static constexpr const char *kSentFolder  = "/sent";  // runs already sent to Firebase
+  static constexpr const char *kInboxFolder = "/inbox"; // session files
 
   uint8_t _csPin;
   const char *_filePath;

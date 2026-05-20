@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "/Users/afons/Desktop/petBionic/firmware/platformio_petBionics/src/ble",
+      "program": "/Users/afons/Desktop/petBionic/firmware/platformio_petBionics/src/ble/build/Debug/outDebug"
+    }
+  ]
+}

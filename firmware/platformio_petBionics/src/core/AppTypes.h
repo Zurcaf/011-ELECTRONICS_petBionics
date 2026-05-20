@@ -18,7 +18,6 @@ struct RawSample
   int16_t mx;
   int16_t my;
   int16_t mz;
-  // Orientation computed by OrientationEstimator (complementary filter)
   float roll;  // degrees
   float pitch; // degrees
   float yaw;   // degrees [0, 360)
@@ -38,4 +37,5 @@ struct AppStatus
   bool hx711Ready;
   uint32_t samples;
   uint32_t events;
+  float batteryVoltage; // Voltage in volts (e.g. 3.7)
 };
