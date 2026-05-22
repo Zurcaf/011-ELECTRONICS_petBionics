@@ -1,6 +1,7 @@
 #include "RawSensor.h"
 
 #include <HX711.h>
+#include <math.h>
 
 #include "../core/Pinout.h"
 
@@ -10,10 +11,10 @@ namespace
 } // namespace
 
 RawSensor::RawSensor(uint8_t analogPin)
-    : _analogPin(analogPin),
+    : _loadCellAnalogPin(analogPin),
       _spi(FSPI),
       _imuReady(false),
-      _hxReady(false),
+      _hx711Ready(false),
       _lastImuHealthCheckMs(0),
       _lastHxHealthCheckMs(0),
       _imuConsecutiveMisses(0),
@@ -21,7 +22,7 @@ RawSensor::RawSensor(uint8_t analogPin)
       _hxConsecutiveMisses(0),
       _hxConsecutiveHits(0),
       _hxSuspiciousReads(0),
-      _magSingleMeasurementMode(false)
+      _magUsesSingleMeasurementMode(false)
 {
 }
 
@@ -77,7 +78,7 @@ bool RawSensor::akReadBytes(uint8_t reg, uint8_t count, uint8_t *dest)
 
 void RawSensor::begin()
 {
-  pinMode(_analogPin, INPUT);
+  pinMode(_loadCellAnalogPin, INPUT);
 
   pinMode(PetBionicsPinout::kImuCs, OUTPUT);
   digitalWrite(PetBionicsPinout::kImuCs, HIGH);
@@ -119,7 +120,7 @@ void RawSensor::begin()
       if (cntl1 != 0x16)
       {
         Serial.println("[Mag] Continuous mode write failed → using single measurement mode");
-        _magSingleMeasurementMode = true;
+        _magUsesSingleMeasurementMode = true;
         akWriteRegister(kAkCntl1Reg, 0x12); // Single measurement, 16-bit
         delay(10);
       }
@@ -132,7 +133,12 @@ void RawSensor::begin()
   }
 
   g_scale.begin(PetBionicsPinout::kHx711Dout, PetBionicsPinout::kHx711Sck);
-  _hxReady = g_scale.wait_ready_timeout(1000);
+  _hx711Ready = g_scale.wait_ready_timeout(1000);
+  if (_hx711Ready)
+  {
+    g_scale.set_scale(kHx711CalibrationFactor);
+    g_scale.tare();
+  }
 }
 
 void RawSensor::updateHealth(uint32_t nowMs)
@@ -201,7 +207,7 @@ void RawSensor::updateHealth(uint32_t nowMs)
         }
         if (_hxSuspiciousReads >= kSuspiciousToNotReady)
         {
-          _hxReady = false;
+          _hx711Ready = false;
         }
       }
       else
@@ -213,7 +219,7 @@ void RawSensor::updateHealth(uint32_t nowMs)
         }
         if (_hxConsecutiveHits >= kHitsToReady)
         {
-          _hxReady = true;
+          _hx711Ready = true;
         }
       }
     }
@@ -227,7 +233,7 @@ void RawSensor::updateHealth(uint32_t nowMs)
       }
       if (_hxConsecutiveMisses >= kMissesToNotReady)
       {
-        _hxReady = false;
+        _hx711Ready = false;
       }
     }
   }
@@ -257,7 +263,7 @@ bool RawSensor::readImuAxes(int16_t &ax, int16_t &ay, int16_t &az,
   uint8_t magRaw[8] = {0};
 
   // In single measurement mode, trigger a new measurement before reading
-  if (_magSingleMeasurementMode)
+  if (_magUsesSingleMeasurementMode)
   {
     akWriteRegister(kAkCntl1Reg, 0x12); // Single measurement, 16-bit
     delay(10);                          // AK8963 needs ~5ms to complete measurement
@@ -291,21 +297,38 @@ int32_t RawSensor::readRaw()
 {
   updateHealth(millis());
 
-  if (_hxReady && g_scale.wait_ready_timeout(2))
+  if (_hx711Ready && g_scale.wait_ready_timeout(2))
   {
     return static_cast<int32_t>(g_scale.read());
   }
 
-  return static_cast<int32_t>(analogRead(_analogPin));
+  return static_cast<int32_t>(analogRead(_loadCellAnalogPin));
 }
 
-void RawSensor::fillSample(RawSample &sample, uint32_t localMs, uint64_t epochMs, float filtered)
+float RawSensor::readEstimatedWeightKg()
 {
-  sample.tLocalMs = localMs;
-  sample.tLocalUs = localMs * 1000UL;
-  sample.tEpochMs = epochMs;
-  sample.raw = readRaw();
-  sample.filtered = filtered;
+  updateHealth(millis());
+
+  if (!_hx711Ready)
+  {
+    return NAN;
+  }
+
+  // HX711 at 80 Hz has a 12.5 ms sample period, so a 2 ms timeout is too short.
+  // Wait long enough for the next conversion instead of dropping to NAN.
+  if (!g_scale.wait_ready_timeout(15))
+  {
+    return NAN;
+  }
+
+  return g_scale.get_units(1);
+}
+
+void RawSensor::fillSample(RawSample &sample, uint32_t sampleUs, float estimatedWeightKg)
+{
+  sample.sampleUs = sampleUs;
+  sample.loadCellRaw = readRaw();
+  sample.loadCellEstimatedKg = estimatedWeightKg;
   readImuAxes(sample.ax, sample.ay, sample.az,
               sample.gx, sample.gy, sample.gz,
               sample.mx, sample.my, sample.mz);

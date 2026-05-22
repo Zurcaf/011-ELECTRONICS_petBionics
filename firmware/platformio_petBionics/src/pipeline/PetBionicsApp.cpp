@@ -9,11 +9,11 @@ PetBionicsApp::PetBionicsApp()
       _filter(_config.filterAlpha),
       _detector(_config.eventThreshold, _config.eventCooldownMs),
       _logger(_config.sdCsPin, _config.sdPath),
-      _web(_config, _status),
-      _lastSampleUs(0),
-      _wasAcquiring(false),
+      _web(_config, _status, _logger),
+      _sampleCursorUs(0),
+      _loggingWasActive(false),
       _status{false, false, false, false, 0, 0, 0.0f},
-      _sleepMode(false)
+      _lowPowerModeActive(false)
 {
 }
 
@@ -24,7 +24,7 @@ void PetBionicsApp::begin()
     delay(50);
 
     Serial.begin(115200);
-    Serial.setTimeout(100);  // Non-blocking Serial (battery mode)
+    Serial.setTimeout(100); // Non-blocking Serial (battery mode)
     delay(100);
 
     // Flush any garbage from Serial
@@ -37,9 +37,9 @@ void PetBionicsApp::begin()
 
     Serial.println("[Init] Sensors...");
     _sensor.begin();
-    _status.imuReady   = _sensor.isImuReady();
+    _status.imuReady = _sensor.isImuReady();
     _status.hx711Ready = _sensor.isHx711Ready();
-    Serial.printf("[Init] IMU:   %s\n", _status.imuReady   ? "OK" : "FAIL");
+    Serial.printf("[Init] IMU:   %s\n", _status.imuReady ? "OK" : "FAIL");
     Serial.printf("[Init] HX711: %s\n", _status.hx711Ready ? "OK" : "FAIL");
 
     Serial.println("[Init] SD...");
@@ -80,11 +80,10 @@ void PetBionicsApp::begin()
 
 void PetBionicsApp::update()
 {
-    // Check for serial commands (sleep/wakeup)
-    processSerialCommand();
+    // Serial commands can switch the device into and out of low-power mode.
+    handleSerialCommand();
 
-    // If in sleep mode, skip main loop
-    if (_sleepMode)
+    if (_lowPowerModeActive)
         return;
 
     const uint32_t nowMs = _clock.nowMs();
@@ -107,38 +106,38 @@ void PetBionicsApp::update()
 
     if (_config.acquisitionEnabled)
     {
-        if (!_wasAcquiring)
+        if (!_loggingWasActive)
         {
             startSession();
         }
 
         const uint32_t nowUs = micros();
-        while ((nowUs - _lastSampleUs) >= _config.samplePeriodUs)
+        while ((nowUs - _sampleCursorUs) >= _config.samplePeriodUs)
         {
-            _lastSampleUs += _config.samplePeriodUs;
-            sampleStep(_lastSampleUs / 1000U, _lastSampleUs);
+            _sampleCursorUs += _config.samplePeriodUs;
+            processSample(_clock.nowMs(), _sampleCursorUs);
         }
     }
     else
     {
-        if (_wasAcquiring)
+        if (_loggingWasActive)
         {
             stopSession();
         }
     }
 
     _status.acquisitionEnabled = _config.acquisitionEnabled;
-    _status.sdReady            = _logger.isReady();
-    _status.imuReady           = _sensor.isImuReady();
-    _status.hx711Ready         = _sensor.isHx711Ready();
+    _status.sdReady = _logger.isReady();
+    _status.imuReady = _sensor.isImuReady();
+    _status.hx711Ready = _sensor.isHx711Ready();
 }
 
 void PetBionicsApp::startSession()
 {
     Serial.println("[Run] START — nova sessão");
-    _status.samples  = 0;
-    _status.events   = 0;
-    _lastSampleUs    = micros();
+    _status.samples = 0;
+    _status.events = 0;
+    _sampleCursorUs = micros();
     _orientation.reset();
 
     // Get current time for session filename
@@ -154,18 +153,18 @@ void PetBionicsApp::startSession()
         Serial.printf("[Run] Ficheiro: %s\n", _logger.activeFilePath());
     }
 
-    _wasAcquiring = true;
+    _loggingWasActive = true;
 }
 
 void PetBionicsApp::stopSession()
 {
     _logger.stopSession();
-    _wasAcquiring = false;
+    _loggingWasActive = false;
     Serial.printf("[Run] STOP — %lu amostras gravadas\n",
                   static_cast<unsigned long>(_status.samples));
 }
 
-void PetBionicsApp::processSerialCommand()
+void PetBionicsApp::handleSerialCommand()
 {
     static char cmdBuffer[32] = {0};
     static uint8_t cmdLen = 0;
@@ -179,20 +178,19 @@ void PetBionicsApp::processSerialCommand()
             if (cmdLen > 0)
             {
                 cmdBuffer[cmdLen] = '\0';
-                Serial.printf("[CMD] '%s'\n", cmdBuffer);
 
                 if (strcmp(cmdBuffer, "sleep") == 0)
                 {
-                    if (!_sleepMode)
+                    if (!_lowPowerModeActive)
                     {
-                        enterLightSleep();
+                        enterLowPowerMode();
                     }
                 }
                 else if (strcmp(cmdBuffer, "wakeup") == 0)
                 {
-                    if (_sleepMode)
+                    if (_lowPowerModeActive)
                     {
-                        _sleepMode = false;
+                        _lowPowerModeActive = false;
                     }
                 }
 
@@ -206,27 +204,28 @@ void PetBionicsApp::processSerialCommand()
     }
 }
 
-void PetBionicsApp::enterLightSleep()
+void PetBionicsApp::enterLowPowerMode()
 {
-    _sleepMode = true;
+    _lowPowerModeActive = true;
 
     // Stop logging if active
-    if (_wasAcquiring)
+    if (_loggingWasActive)
     {
         _logger.stopSession();
-        _wasAcquiring = false;
+        _loggingWasActive = false;
     }
 
     // Disconnect WiFi to save power
-    WiFi.disconnect(true);  // true = turn off WiFi radio
+    WiFi.disconnect(true); // true = turn off WiFi radio
+    Serial.println("[Sleep] Entering sleep mode... send 'wakeup' to resume");
     Serial.println("[Sleep] WiFi disabled, low-power mode active");
     Serial.flush();
 
     // Loop in sleep mode until wakeup received
-    while (_sleepMode)
+    while (_lowPowerModeActive)
     {
-        delay(100);  // Check serial every 100ms
-        processSerialCommand();  // This will set _sleepMode = false on "wakeup"
+        delay(100);            // Check serial every 100ms
+        handleSerialCommand(); // This clears _lowPowerModeActive on "wakeup"
     }
 
     // On wakeup: reconnect WiFi
@@ -252,7 +251,7 @@ void PetBionicsApp::enterLightSleep()
     }
 }
 
-void PetBionicsApp::sampleStep(uint32_t nowMs, uint32_t nowUs)
+void PetBionicsApp::processSample(uint32_t nowMs, uint32_t nowUs)
 {
     _filter.setAlpha(_config.filterAlpha);
     _detector.setThreshold(_config.eventThreshold);
@@ -261,19 +260,31 @@ void PetBionicsApp::sampleStep(uint32_t nowMs, uint32_t nowUs)
     int16_t gx = 0, gy = 0, gz = 0;
     int16_t mx = 0, my = 0, mz = 0;
 
-    int32_t   raw      = _sensor.readRaw();
+    int32_t loadCellRawValue = _sensor.readRaw();
+    float loadCellFilteredValue = _filter.update(static_cast<float>(loadCellRawValue));
+    float loadCellEstimatedKg = _sensor.readEstimatedWeightKg();
     _sensor.readImuAxes(ax, ay, az, gx, gy, gz, mx, my, mz);
-    float     filtered = _filter.update(static_cast<float>(raw));
-    EventInfo event    = _detector.update(static_cast<float>(raw), filtered, nowMs);
+    EventInfo eventInfo = _detector.update(static_cast<float>(loadCellRawValue), loadCellFilteredValue, nowMs);
 
-    const float       dtSeconds = static_cast<float>(_config.samplePeriodUs) / 1000000.0f;
-    const Orientation orient    = _orientation.update(ax, ay, az, gx, gy, gz, mx, my, mz, dtSeconds);
+    const float dtSeconds = static_cast<float>(_config.samplePeriodUs) / 1000000.0f;
+    const Orientation orientation = _orientation.update(ax, ay, az, gx, gy, gz, mx, my, mz, dtSeconds);
 
-    RawSample sample{nowMs, nowUs, 0ULL, raw, filtered,
+    RawSample sample{nowUs, loadCellRawValue, loadCellEstimatedKg,
                      ax, ay, az, gx, gy, gz, mx, my, mz,
-                     orient.roll, orient.pitch, orient.yaw};
-    _logger.append(sample, event);
+                     orientation.roll, orientation.pitch, orientation.yaw};
+
+    // Debug: print sample being appended so we can trace duplicate CSV rows
+    Serial.printf("[Sample] us=%lu raw=%ld est=%.3f evt=%s\n",
+                  static_cast<unsigned long>(sample.sampleUs),
+                  static_cast<long>(sample.loadCellRaw),
+                  sample.loadCellEstimatedKg,
+                  eventInfo.triggered ? "T" : ".");
+
+    _logger.append(sample, eventInfo);
 
     _status.samples++;
-    if (event.triggered) { _status.events++; }
+    if (eventInfo.triggered)
+    {
+        _status.events++;
+    }
 }

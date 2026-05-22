@@ -15,24 +15,37 @@ public:
   bool startSession(uint64_t startEpochMs);
   void stopSession();
   void updateHealth(uint32_t nowMs);
-  bool isReady() const { return _ready; }
+  bool isReady() const { return _sdCardReady; }
   bool append(const RawSample &sample, const EventInfo &event);
-  const char *activeFilePath() const { return _activeFilePath; }
+  const char *activeFilePath() const { return _sessionFilePath; }
+
+  // File listing for download interface
+  int listFiles(String fileList[], int maxFiles) const;
+  size_t getFileSize(const char *filename) const;
+  bool readFile(const char *filename, uint8_t *buffer, size_t bufferSize, size_t &bytesRead);
 
 private:
-  static constexpr uint16_t kFlushEveryN = 80;          // flush once per second at 80 Hz
-  static constexpr const char *kInboxFolder = "/inbox"; // session files
+  // Keep the file open and flush once per second to reduce SD overhead.
+  static constexpr uint16_t kSamplesPerFlush = 80;
+  static constexpr const char *kInboxRootFolder = "/inbox";
 
   uint8_t _csPin;
-  const char *_filePath;
-  bool _ready;
+  const char *_logBasePath;
+  bool _sdCardReady;
   SPIClass _spi;
   uint32_t _lastHealthCheckMs;
-  bool _sessionOpen;
+  bool _sessionIsOpen;
   uint64_t _sessionStartEpochMs;
-  char _activeFilePath[96];
-  File _activeFile;       // kept open for the duration of a session
-  uint16_t _flushCounter;
+  char _sessionFilePath[96];
+  File _activeFile; // kept open for the duration of a session
+  uint16_t _samplesSinceLastFlush;
 
-  bool ensureHeader(const char *path, uint64_t startEpochMs);
+  // Last written line (simple dedupe guard to avoid accidental repeated rows)
+  char _lastLine[320];
+  bool _hasLastLine;
+  // Last written sample timestamp (micros) to avoid duplicate sampleUs writes
+  uint32_t _lastSampleUs;
+  bool _hasLastSampleUs;
+
+  bool ensureHeader(const char *path);
 };

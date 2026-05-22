@@ -4,11 +4,9 @@
 
 struct RawSample
 {
-  uint32_t tLocalMs;
-  uint32_t tLocalUs;
-  uint64_t tEpochMs;
-  int32_t raw;
-  float filtered;
+  uint32_t sampleUs;
+  int32_t loadCellRaw;
+  float loadCellEstimatedKg;
   int16_t ax;
   int16_t ay;
   int16_t az;

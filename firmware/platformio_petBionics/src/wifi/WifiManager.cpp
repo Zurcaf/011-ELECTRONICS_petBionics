@@ -12,8 +12,9 @@ bool WifiManager::connect(const char *ssid, const char *password, uint32_t timeo
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
 
-    const uint32_t start = millis();
-    while (WiFi.status() != WL_CONNECTED && (millis() - start) < timeoutMs)
+    const uint32_t connectionStartMs = millis();
+    // Poll until the timeout expires or the station gets an IP address.
+    while (WiFi.status() != WL_CONNECTED && (millis() - connectionStartMs) < timeoutMs)
     {
         delay(250);
         Serial.print(".");

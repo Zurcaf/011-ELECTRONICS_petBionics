@@ -30,14 +30,14 @@ private:
     WifiManager _wifi;
     WebInterface _web;
 
-    uint32_t _lastSampleUs;
-    bool _wasAcquiring;
+    uint32_t _sampleCursorUs;
+    bool _loggingWasActive;
     AppStatus _status;
-    bool _sleepMode;
+    bool _lowPowerModeActive;
 
-    void sampleStep(uint32_t nowMs, uint32_t nowUs);
+    void processSample(uint32_t nowMs, uint32_t nowUs);
     void startSession();
     void stopSession();
-    void processSerialCommand();
-    void enterLightSleep();
+    void handleSerialCommand();
+    void enterLowPowerMode();
 };

@@ -8,29 +8,28 @@
 
 namespace
 {
+  // Pin the SD timestamps to the local timezone used by the device.
   void configureLocalTimezone()
   {
     setenv("TZ", "WET0WEST,M3.5.0/1,M10.5.0/2", 1);
     tzset();
   }
 
-  struct SessionFileRecord
-  {
-    char currentPath[96];
-    uint16_t runNumber;
-  };
+  // If device localtime appears offset, adjust printed times by this many hours.
+  // Set to 0 for no adjustment; set to 1 if localtime is 1 hour behind.
+  static constexpr int kLocalTimeOffsetHours = 1;
 
-  void extractBaseName(const char *path, char *out, size_t outSize);
+  void copyBaseNameWithoutExtension(const char *path, char *out, size_t outSize);
 
-  void normalizeBaseName(char *base)
+  void stripLeadingSlash(char *baseName)
   {
-    if (!base)
+    if (!baseName)
     {
       return;
     }
-    if (base[0] == '/')
+    if (baseName[0] == '/')
     {
-      memmove(base, base + 1, strlen(base));
+      memmove(baseName, baseName + 1, strlen(baseName));
     }
   }
 
@@ -44,14 +43,15 @@ namespace
     return dot && strcmp(dot, ".csv") == 0;
   }
 
-  bool buildDateKey(uint64_t epochMs, char *out, size_t outSize)
+  bool formatDateKey(uint64_t epochMs, char *out, size_t outSize)
   {
     if (!out || outSize < 9 || epochMs == 0)
     {
       return false;
     }
-
-    const time_t seconds = static_cast<time_t>(epochMs / 1000ULL);
+    time_t seconds = static_cast<time_t>(epochMs / 1000ULL);
+    // Apply optional local offset
+    seconds += static_cast<time_t>(kLocalTimeOffsetHours) * 3600;
     struct tm localTm;
     localtime_r(&seconds, &localTm);
     snprintf(out,
@@ -63,7 +63,7 @@ namespace
     return true;
   }
 
-  void buildDayFolderPath(uint64_t epochMs, char *out, size_t outSize)
+  void formatSessionDayFolder(uint64_t epochMs, char *out, size_t outSize)
   {
     if (!out || outSize == 0)
     {
@@ -71,7 +71,7 @@ namespace
     }
 
     char dateKey[9] = {0};
-    if (!buildDateKey(epochMs, dateKey, sizeof(dateKey)))
+    if (!formatDateKey(epochMs, dateKey, sizeof(dateKey)))
     {
       snprintf(out, outSize, "/inbox/unsynced");
       return;
@@ -121,7 +121,7 @@ namespace
     return csvCount;
   }
 
-  uint16_t nextDailyRunNumber(const char *basePath, const char *dayFolder, uint64_t epochMs)
+  uint16_t calculateNextRunNumber(const char *basePath, const char *dayFolder, uint64_t epochMs)
   {
     if (!basePath || !dayFolder || epochMs == 0)
     {
@@ -137,10 +137,10 @@ namespace
     return SD.cardType() != CARD_NONE;
   }
 
-  bool canAccessPath(bool sessionOpen, const char *activeFilePath)
+  bool canAccessCurrentSessionPath(bool sessionIsOpen, const char *sessionFilePath)
   {
-    File probe = sessionOpen
-                     ? SD.open(activeFilePath, FILE_APPEND)
+    File probe = sessionIsOpen
+                     ? SD.open(sessionFilePath, FILE_APPEND)
                      : SD.open("/", FILE_READ);
     if (!probe)
     {
@@ -150,7 +150,7 @@ namespace
     return true;
   }
 
-  void extractBaseName(const char *path, char *out, size_t outSize)
+  void copyBaseNameWithoutExtension(const char *path, char *out, size_t outSize)
   {
     if (!path || !out || outSize == 0)
     {
@@ -168,7 +168,7 @@ namespace
     }
   }
 
-  void buildSessionPath(const char *basePath, const char *dayFolder, uint64_t epochMs, uint16_t runNumber, char *out, size_t outSize)
+  void formatSessionFilePath(const char *basePath, const char *dayFolder, uint64_t epochMs, uint16_t runNumber, char *out, size_t outSize)
   {
     if (!basePath || !dayFolder || !out || outSize == 0)
     {
@@ -176,16 +176,18 @@ namespace
     }
 
     char base[64] = {0};
-    extractBaseName(basePath, base, sizeof(base));
+    copyBaseNameWithoutExtension(basePath, base, sizeof(base));
     if (base[0] == '\0')
     {
       strncpy(base, "/raw_log", sizeof(base) - 1);
     }
-    normalizeBaseName(base);
+    stripLeadingSlash(base);
 
     if (epochMs > 0)
     {
       time_t seconds = static_cast<time_t>(epochMs / 1000ULL);
+      // Apply optional local offset so filenames reflect local day/time
+      seconds += static_cast<time_t>(kLocalTimeOffsetHours) * 3600;
       struct tm localTm;
       localtime_r(&seconds, &localTm);
       snprintf(out,
@@ -212,76 +214,23 @@ namespace
              static_cast<unsigned long>(millis()));
   }
 
-  void formatDateTimeUtc(uint64_t epochMs, char *out, size_t outSize)
-  {
-    if (!out || outSize == 0)
-    {
-      return;
-    }
-
-    if (epochMs == 0)
-    {
-      snprintf(out, outSize, "UNSYNCED");
-      return;
-    }
-
-    const time_t seconds = static_cast<time_t>(epochMs / 1000ULL);
-    const uint32_t millisPart = static_cast<uint32_t>(epochMs % 1000ULL);
-    struct tm localTm;
-    localtime_r(&seconds, &localTm);
-
-    snprintf(out,
-             outSize,
-             "%04d-%02d-%02dT%02d:%02d:%02d.%03luZ",
-             localTm.tm_year + 1900,
-             localTm.tm_mon + 1,
-             localTm.tm_mday,
-             localTm.tm_hour,
-             localTm.tm_min,
-             localTm.tm_sec,
-             static_cast<unsigned long>(millisPart));
-  }
-
-  void formatTimeUtc(uint64_t epochMs, char *out, size_t outSize)
-  {
-    if (!out || outSize == 0)
-    {
-      return;
-    }
-
-    if (epochMs == 0)
-    {
-      snprintf(out, outSize, "UNSYNCED");
-      return;
-    }
-
-    const time_t seconds = static_cast<time_t>(epochMs / 1000ULL);
-    const uint32_t millisPart = static_cast<uint32_t>(epochMs % 1000ULL);
-    struct tm localTm;
-    localtime_r(&seconds, &localTm);
-
-    snprintf(out,
-             outSize,
-             "%02d:%02d:%02d.%03lu",
-             localTm.tm_hour,
-             localTm.tm_min,
-             localTm.tm_sec,
-             static_cast<unsigned long>(millisPart));
-  }
-
 } // namespace
 
 RawSdLogger::RawSdLogger(uint8_t csPin, const char *filePath)
     : _csPin(csPin),
-      _filePath(filePath),
-      _ready(false),
+      _logBasePath(filePath),
+      _sdCardReady(false),
       _spi(FSPI),
       _lastHealthCheckMs(0),
-      _sessionOpen(false),
+      _sessionIsOpen(false),
       _sessionStartEpochMs(0),
-      _flushCounter(0)
+      _samplesSinceLastFlush(0),
+      _hasLastLine(false),
+      _hasLastSampleUs(false)
 {
-  _activeFilePath[0] = '\0';
+  _sessionFilePath[0] = '\0';
+  _lastLine[0] = '\0';
+  _lastSampleUs = 0;
 }
 
 bool RawSdLogger::begin()
@@ -291,8 +240,8 @@ bool RawSdLogger::begin()
              PetBionicsPinout::kSpiMiso,
              PetBionicsPinout::kSpiMosi);
 
-  _ready = SD.begin(_csPin, _spi);
-  if (!_ready)
+  _sdCardReady = SD.begin(_csPin, _spi);
+  if (!_sdCardReady)
   {
     Serial.println("SD.begin failed: card not detected or wiring/CS is wrong");
     return false;
@@ -305,14 +254,20 @@ bool RawSdLogger::begin()
 bool RawSdLogger::startSession(uint64_t startEpochMs)
 {
   updateHealth(millis());
-  if (!_ready)
+  if (!_sdCardReady)
   {
     Serial.println("SD session start failed: logger not ready");
     return false;
   }
 
+  // Close any existing session first
+  if (_sessionIsOpen)
+  {
+    stopSession();
+  }
+
   char dayFolder[32] = {0};
-  buildDayFolderPath(startEpochMs, dayFolder, sizeof(dayFolder));
+  formatSessionDayFolder(startEpochMs, dayFolder, sizeof(dayFolder));
 
   if (dayFolder[0] == '\0')
   {
@@ -321,7 +276,7 @@ bool RawSdLogger::startSession(uint64_t startEpochMs)
   }
 
   // Ensure /inbox exists before creating the day subfolder (SD.mkdir is not recursive).
-  if (!SD.exists(kInboxFolder) && !SD.mkdir(kInboxFolder))
+  if (!SD.exists(kInboxRootFolder) && !SD.mkdir(kInboxRootFolder))
   {
     Serial.println("SD session start failed: could not create inbox folder");
     return false;
@@ -332,39 +287,43 @@ bool RawSdLogger::startSession(uint64_t startEpochMs)
     return false;
   }
 
-  uint16_t runNumber = nextDailyRunNumber(_filePath, dayFolder, startEpochMs);
+  uint16_t runNumber = calculateNextRunNumber(_logBasePath, dayFolder, startEpochMs);
   if (runNumber == 0)
   {
     runNumber = 1;
   }
 
-  buildSessionPath(_filePath, dayFolder, startEpochMs, runNumber, _activeFilePath, sizeof(_activeFilePath));
-  _sessionOpen = true;
+  formatSessionFilePath(_logBasePath, dayFolder, startEpochMs, runNumber, _sessionFilePath, sizeof(_sessionFilePath));
+  _sessionIsOpen = true;
   _sessionStartEpochMs = startEpochMs;
 
-  if (!ensureHeader(_activeFilePath, _sessionStartEpochMs))
+  if (!ensureHeader(_sessionFilePath))
   {
-    _sessionOpen = false;
+    _sessionIsOpen = false;
     _sessionStartEpochMs = 0;
-    _activeFilePath[0] = '\0';
+    _sessionFilePath[0] = '\0';
     return false;
   }
 
   // Open once and keep the handle open for the whole session so that each
   // append() only writes – no per-sample open/close overhead on the SD.
-  _activeFile = SD.open(_activeFilePath, FILE_APPEND);
+  _activeFile = SD.open(_sessionFilePath, FILE_APPEND);
   if (!_activeFile)
   {
-    _ready = false;
-    _sessionOpen = false;
+    _sdCardReady = false;
+    _sessionIsOpen = false;
     _sessionStartEpochMs = 0;
-    _activeFilePath[0] = '\0';
+    _sessionFilePath[0] = '\0';
     Serial.println("SD session start failed: could not open file for append");
     return false;
   }
-  _flushCounter = 0;
+  _samplesSinceLastFlush = 0;
+  _hasLastLine = false;
+  _lastLine[0] = '\0';
+  _hasLastSampleUs = false;
+  _lastSampleUs = 0;
 
-  Serial.printf("SD session file: %s\n", _activeFilePath);
+  Serial.printf("SD session file: %s\n", _sessionFilePath);
   return true;
 }
 
@@ -375,10 +334,14 @@ void RawSdLogger::stopSession()
     _activeFile.flush();
     _activeFile.close();
   }
-  _sessionOpen = false;
+  _sessionIsOpen = false;
   _sessionStartEpochMs = 0;
-  _activeFilePath[0] = '\0';
-  _flushCounter = 0;
+  _sessionFilePath[0] = '\0';
+  _samplesSinceLastFlush = 0;
+  _hasLastLine = false;
+  _lastLine[0] = '\0';
+  _hasLastSampleUs = false;
+  _lastSampleUs = 0;
 }
 
 void RawSdLogger::updateHealth(uint32_t nowMs)
@@ -390,11 +353,11 @@ void RawSdLogger::updateHealth(uint32_t nowMs)
   }
   _lastHealthCheckMs = nowMs;
 
-  if (_ready)
+  if (_sdCardReady)
   {
-    if (!isCardPresent() || !canAccessPath(_sessionOpen, _activeFilePath))
+    if (!isCardPresent() || !canAccessCurrentSessionPath(_sessionIsOpen, _sessionFilePath))
     {
-      _ready = false;
+      _sdCardReady = false;
       Serial.println("SD health check failed: card/file unavailable");
       return;
     }
@@ -406,45 +369,47 @@ void RawSdLogger::updateHealth(uint32_t nowMs)
   {
     if (!isCardPresent())
     {
-      _ready = false;
+      _sdCardReady = false;
       return;
     }
 
-    _ready = canAccessPath(_sessionOpen, _activeFilePath);
-    if (_ready && _sessionOpen)
+    _sdCardReady = canAccessCurrentSessionPath(_sessionIsOpen, _sessionFilePath);
+    if (_sdCardReady && _sessionIsOpen)
     {
-      _ready = ensureHeader(_activeFilePath, _sessionStartEpochMs);
+      _sdCardReady = ensureHeader(_sessionFilePath);
     }
-    if (_ready)
+    if (_sdCardReady)
     {
       Serial.println("SD logger recovered");
     }
   }
 }
 
-bool RawSdLogger::ensureHeader(const char *path, uint64_t startEpochMs)
+bool RawSdLogger::ensureHeader(const char *path)
 {
   if (!path || path[0] == '\0')
   {
-    _ready = false;
+    _sdCardReady = false;
     Serial.println("SD header create failed: empty file path");
     return false;
   }
 
-  if (SD.exists(path))
+  File file = SD.open(path, FILE_READ);
+  if (file)
   {
+    file.close();
     return true;
   }
 
-  File file = SD.open(path, FILE_WRITE);
+  file = SD.open(path, FILE_WRITE);
   if (!file)
   {
-    _ready = false;
+    _sdCardReady = false;
     Serial.println("SD header create failed: could not open log file");
     return false;
   }
 
-  file.println("t_rel_ms,t_rel_us,time_local,load_cell_raw,load_cell_filt,imu_ax,imu_ay,imu_az,imu_gx,imu_gy,imu_gz,imu_mx,imu_my,imu_mz,roll_deg,pitch_deg,yaw_deg");
+  file.println("sample_us,time_of_day,load_cell_raw,load_cell_est_kg,imu_ax,imu_ay,imu_az,imu_gx,imu_gy,imu_gz,imu_mx,imu_my,imu_mz,roll_deg,pitch_deg,yaw_deg");
   file.close();
   return true;
 }
@@ -453,22 +418,28 @@ bool RawSdLogger::append(const RawSample &sample, const EventInfo &event)
 {
   (void)event;
 
-  if (!_ready || !_sessionOpen || !_activeFile)
+  if (!_sdCardReady || !_sessionIsOpen || !_activeFile)
   {
     return false;
   }
 
-  char timeUtc[24];
-  formatTimeUtc(sample.tEpochMs, timeUtc, sizeof(timeUtc));
+  // Build local time-of-day string (HH:MM:SS.mmm)
+  char timeBuf[16] = {0};
+  time_t nowSec = time(nullptr);
+  // Apply optional offset hours to get correct local time
+  nowSec += static_cast<time_t>(kLocalTimeOffsetHours) * 3600;
+  struct tm localTm;
+  localtime_r(&nowSec, &localTm);
+  int ms = static_cast<int>(millis() % 1000);
+  snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d:%02d.%03d", localTm.tm_hour, localTm.tm_min, localTm.tm_sec, ms);
 
-  char line[320];
+  char line[420];
   int written = snprintf(line, sizeof(line),
-                         "%lu,%lu,%s,%ld,%.3f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.2f,%.2f,%.2f\n",
-                         static_cast<unsigned long>(sample.tLocalMs),
-                         static_cast<unsigned long>(sample.tLocalUs),
-                         timeUtc,
-                         static_cast<long>(sample.raw),
-                         sample.filtered,
+                         "%lu,%s,%ld,%.3f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.2f,%.2f,%.2f\n",
+                         static_cast<unsigned long>(sample.sampleUs),
+                         timeBuf,
+                         static_cast<long>(sample.loadCellRaw),
+                         sample.loadCellEstimatedKg,
                          static_cast<int>(sample.ax),
                          static_cast<int>(sample.ay),
                          static_cast<int>(sample.az),
@@ -487,22 +458,132 @@ bool RawSdLogger::append(const RawSample &sample, const EventInfo &event)
     return false;
   }
 
+  // Deduplicate: if the formatted line equals the last one written, skip.
+  // Deduplicate by sample timestamp first (fast integer compare)
+  if (_hasLastSampleUs && static_cast<uint32_t>(sample.sampleUs) == _lastSampleUs)
+  {
+    return true; // already written this sample
+  }
+
+  // Deduplicate fallback: if the formatted line equals the last one written, skip.
+  if (_hasLastLine && strcmp(line, _lastLine) == 0)
+  {
+    return true; // already written
+  }
+
   size_t bytesWritten = _activeFile.write(reinterpret_cast<const uint8_t *>(line), static_cast<size_t>(written));
   if (bytesWritten != static_cast<size_t>(written))
   {
-    _ready = false;
+    _sdCardReady = false;
     Serial.println("SD append failed: short write");
     return false;
   }
 
-  // Flush to SD card once per second (every kFlushEveryN samples at 80 Hz).
+  // Save last written line for dedupe checks
+  strncpy(_lastLine, line, sizeof(_lastLine) - 1);
+  _lastLine[sizeof(_lastLine) - 1] = '\0';
+  _hasLastLine = true;
+  _lastSampleUs = static_cast<uint32_t>(sample.sampleUs);
+  _hasLastSampleUs = true;
+
+  // Flush to SD card once per second (every kSamplesPerFlush samples at 80 Hz).
   // This keeps per-sample overhead minimal while bounding data loss to ~1 s.
-  if (++_flushCounter >= kFlushEveryN)
+  if (++_samplesSinceLastFlush >= kSamplesPerFlush)
   {
     _activeFile.flush();
-    _flushCounter = 0;
+    _samplesSinceLastFlush = 0;
   }
 
   return true;
 }
 
+int RawSdLogger::listFiles(String fileList[], int maxFiles) const
+{
+  if (!_sdCardReady || maxFiles <= 0)
+  {
+    return 0;
+  }
+
+  int fileCount = 0;
+  File inboxDir = SD.open(kInboxRootFolder);
+  if (!inboxDir)
+  {
+    return 0;
+  }
+
+  File dayDir = inboxDir.openNextFile();
+  while (dayDir && fileCount < maxFiles)
+  {
+    if (dayDir.isDirectory())
+    {
+      File csvFile = dayDir.openNextFile();
+      while (csvFile && fileCount < maxFiles)
+      {
+        if (!csvFile.isDirectory())
+        {
+          char fullPath[96] = {0};
+          snprintf(fullPath, sizeof(fullPath), "%s/%s/%s", kInboxRootFolder, dayDir.name(), csvFile.name());
+          fileList[fileCount++] = String(fullPath);
+        }
+        csvFile.close();
+        csvFile = dayDir.openNextFile();
+      }
+    }
+    dayDir.close();
+    dayDir = inboxDir.openNextFile();
+  }
+  inboxDir.close();
+
+  // Sort in descending order (most recent first) by comparing filenames
+  for (int i = 0; i < fileCount - 1; i++)
+  {
+    for (int j = i + 1; j < fileCount; j++)
+    {
+      if (fileList[j] > fileList[i])
+      {
+        String temp = fileList[i];
+        fileList[i] = fileList[j];
+        fileList[j] = temp;
+      }
+    }
+  }
+
+  return fileCount;
+}
+
+size_t RawSdLogger::getFileSize(const char *filename) const
+{
+  if (!_sdCardReady || !filename)
+  {
+    return 0;
+  }
+
+  File file = SD.open(filename, FILE_READ);
+  if (!file)
+  {
+    return 0;
+  }
+
+  size_t size = file.size();
+  file.close();
+  return size;
+}
+
+bool RawSdLogger::readFile(const char *filename, uint8_t *buffer, size_t bufferSize, size_t &bytesRead)
+{
+  bytesRead = 0;
+  if (!_sdCardReady || !filename || !buffer || bufferSize == 0)
+  {
+    return false;
+  }
+
+  File file = SD.open(filename, FILE_READ);
+  if (!file)
+  {
+    return false;
+  }
+
+  bytesRead = file.read(buffer, bufferSize);
+  file.close();
+  return true;
+}

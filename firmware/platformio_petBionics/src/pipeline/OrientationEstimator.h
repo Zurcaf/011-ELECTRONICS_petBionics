@@ -34,14 +34,14 @@ public:
                      float dtSeconds);
 
 private:
-  float _alpha;
-  float _roll;
-  float _pitch;
-  float _yaw;
-  bool _initialized;
+  float _gyroBlendFactor;
+  float _rollDeg;
+  float _pitchDeg;
+  float _yawDeg;
+  bool _hasBootstrapSample;
 
   // MPU-9250 default full-scale conversion factors
   static constexpr float kAccelScale = 1.0f / 16384.0f; // LSB -> g
-  static constexpr float kGyroScale  = 1.0f / 131.0f;   // LSB -> °/s
-  static constexpr float kMagScale   = 0.15f;            // LSB -> µT (AK8963 16-bit)
+  static constexpr float kGyroScale = 1.0f / 131.0f;    // LSB -> °/s
+  static constexpr float kMagScale = 0.15f;             // LSB -> µT (AK8963 16-bit)
 };

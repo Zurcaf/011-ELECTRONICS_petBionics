@@ -9,10 +9,10 @@ class SimpleEventDetector
 public:
   SimpleEventDetector(float threshold, uint32_t cooldownMs);
   EventInfo update(float rawValue, float filteredValue, uint32_t nowMs);
-  void setThreshold(float threshold) { _threshold = threshold; }
+  void setThreshold(float threshold) { _eventThreshold = threshold; }
 
 private:
-  float _threshold;
-  uint32_t _cooldownMs;
-  uint32_t _lastEventMs;
+  float _eventThreshold;
+  uint32_t _eventCooldownMs;
+  uint32_t _lastTriggeredMs;
 };

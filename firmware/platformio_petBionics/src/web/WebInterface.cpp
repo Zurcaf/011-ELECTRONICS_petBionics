@@ -1,5 +1,6 @@
 #include "WebInterface.h"
 
+// Small dashboard used to inspect the current device state and control logging.
 static const char kHtmlTemplate[] PROGMEM = R"html(<!DOCTYPE html>
 <html lang="pt">
 <head>
@@ -24,6 +25,12 @@ static const char kHtmlTemplate[] PROGMEM = R"html(<!DOCTYPE html>
   .btn-start{background:#28a745;color:#fff}
   .btn-stop{background:#dc3545;color:#fff}
   button:disabled{opacity:.35;cursor:default}
+  .file-list{max-height:300px;overflow-y:auto;font-size:.9em}
+  .file-item{display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid #f0f0f0}
+  .file-item:last-child{border-bottom:none}
+  .file-name{flex:1;word-break:break-all}
+  .file-size{color:#999;margin:0 8px;font-size:.85em}
+  .download-btn{background:#007bff;color:#fff;padding:4px 12px;text-decoration:none;border-radius:4px;font-size:.85em;white-space:nowrap;margin-left:8px}
 </style>
 </head>
 <body>
@@ -45,22 +52,34 @@ static const char kHtmlTemplate[] PROGMEM = R"html(<!DOCTYPE html>
     <button class="btn-stop" %STOP_DIS%>&#9632; Parar</button>
   </form>
 </div>
+<div class="card">
+  <h3 style="margin:0 0 12px 0">📥 Ficheiros (SD)</h3>
+  <div class="file-list">%FILES%</div>
+</div>
 <p style="color:#999;font-size:.75em;text-align:center">Atualiza automaticamente a cada 3s</p>
 </body>
 </html>)html";
 
 // ---------------------------------------------------------------------------
 
-WebInterface::WebInterface(AppConfig &config, AppStatus &status)
-    : _server(80), _config(config), _status(status)
+WebInterface::WebInterface(AppConfig &config, AppStatus &status, RawSdLogger &logger)
+    : _server(80), _config(config), _status(status), _logger(logger)
 {
 }
 
 void WebInterface::begin()
 {
-    _server.on("/",      HTTP_GET,  [this]() { handleRoot();  });
-    _server.on("/start", HTTP_POST, [this]() { handleStart(); });
-    _server.on("/stop",  HTTP_POST, [this]() { handleStop();  });
+    // Route layout: dashboard, start/stop logging, list files, download files.
+    _server.on("/", HTTP_GET, [this]()
+               { handleRoot(); });
+    _server.on("/start", HTTP_POST, [this]()
+               { handleStart(); });
+    _server.on("/stop", HTTP_POST, [this]()
+               { handleStop(); });
+    _server.on("/files", HTTP_GET, [this]()
+               { handleFiles(); });
+    _server.on("/download", HTTP_GET, [this]()
+               { handleDownload(); });
     _server.begin();
     Serial.println("[Web] HTTP server started on port 80");
 }
@@ -89,39 +108,137 @@ void WebInterface::handleStop()
     _server.send(303);
 }
 
+void WebInterface::handleFiles()
+{
+    const int kMaxFilesToList = 50;
+    String filePaths[kMaxFilesToList];
+    int fileCount = _logger.listFiles(filePaths, kMaxFilesToList);
+
+    String responseBody = "[";
+    for (int i = 0; i < fileCount; i++)
+    {
+        if (i > 0)
+            responseBody += ",";
+        size_t fileSizeBytes = _logger.getFileSize(filePaths[i].c_str());
+        responseBody += "{\"name\":\"" + filePaths[i] + "\",\"size\":" + String(fileSizeBytes) + "}";
+    }
+    responseBody += "]";
+
+    _server.send(200, "application/json", responseBody);
+}
+
+void WebInterface::handleDownload()
+{
+    if (!_server.hasArg("file"))
+    {
+        _server.send(400, "text/plain", "Missing 'file' parameter");
+        return;
+    }
+
+    String requestedFilePath = _server.arg("file");
+    Serial.printf("[Download] Requested: %s\n", requestedFilePath.c_str());
+
+    size_t requestedFileSize = _logger.getFileSize(requestedFilePath.c_str());
+    Serial.printf("[Download] File size: %zu bytes\n", requestedFileSize);
+
+    if (requestedFileSize == 0)
+    {
+        Serial.println("[Download] File not found or empty");
+        _server.send(404, "text/plain", "File not found");
+        return;
+    }
+
+    _server.sendHeader("Content-Disposition", "attachment; filename=\"" + requestedFilePath + "\"");
+    _server.setContentLength(requestedFileSize);
+    _server.send(200, "text/csv", "");
+
+    // Stream the file in small chunks so the HTTP response stays responsive.
+    // Open the file once and stream sequentially to avoid re-reading the
+    // beginning of the file on each chunk (which caused duplicated blocks).
+    const size_t kDownloadChunkSize = 2048;
+    uint8_t chunkBuffer[kDownloadChunkSize];
+    size_t bytesSent = 0;
+
+    File file = SD.open(requestedFilePath.c_str(), FILE_READ);
+    if (!file)
+    {
+        Serial.println("[Download] Could not open file for streaming");
+    }
+    else
+    {
+        while (bytesSent < requestedFileSize)
+        {
+            size_t bytesToRead = (requestedFileSize - bytesSent > kDownloadChunkSize) ? kDownloadChunkSize : (requestedFileSize - bytesSent);
+            size_t bytesRead = file.read(chunkBuffer, bytesToRead);
+            if (bytesRead == 0)
+                break;
+
+            _server.client().write(chunkBuffer, bytesRead);
+            bytesSent += bytesRead;
+        }
+        file.close();
+    }
+
+    Serial.printf("[Download] Complete: %zu / %zu bytes\n", bytesSent, requestedFileSize);
+}
+
 String WebInterface::buildHtml() const
 {
-    const bool logging = _config.acquisitionEnabled;
+    const bool isAcquisitionActive = _config.acquisitionEnabled;
 
-    // Battery status: green ≥3.5V, yellow 3.0-3.5V, red <3.0V (for 3.7V nominal)
-    String battClass = "ok";
+    // Battery status
+    String batteryClass = "ok";
     if (_status.batteryVoltage < 3.0f)
-        battClass = "fail";
+        batteryClass = "fail";
     else if (_status.batteryVoltage < 3.5f)
-        battClass = "warn";
+        batteryClass = "warn";
 
     String html = FPSTR(kHtmlTemplate);
 
-    html.replace("%STATE%",    logging ? "A gravar" : "Parado");
-    html.replace("%BADGE%",    logging ? "logging"  : "idle");
+    html.replace("%STATE%", isAcquisitionActive ? "A gravar" : "Parado");
+    html.replace("%BADGE%", isAcquisitionActive ? "logging" : "idle");
 
     char battStr[16];
     snprintf(battStr, sizeof(battStr), "%.2f", _status.batteryVoltage);
-    html.replace("%BATT_V%",      battStr);
-    html.replace("%BATT_CLASS%",  battClass);
+    html.replace("%BATT_V%", battStr);
+    html.replace("%BATT_CLASS%", batteryClass);
 
-    html.replace("%SD_CLASS%",    _status.sdReady    ? "ok" : "fail");
-    html.replace("%SD%",          _status.sdReady    ? "OK" : "FALHA");
-    html.replace("%IMU_CLASS%",   _status.imuReady   ? "ok" : "fail");
-    html.replace("%IMU%",         _status.imuReady   ? "OK" : "FALHA");
+    html.replace("%SD_CLASS%", _status.sdReady ? "ok" : "fail");
+    html.replace("%SD%", _status.sdReady ? "OK" : "FALHA");
+    html.replace("%IMU_CLASS%", _status.imuReady ? "ok" : "fail");
+    html.replace("%IMU%", _status.imuReady ? "OK" : "FALHA");
     html.replace("%HX711_CLASS%", _status.hx711Ready ? "ok" : "fail");
-    html.replace("%HX711%",       _status.hx711Ready ? "OK" : "FALHA");
+    html.replace("%HX711%", _status.hx711Ready ? "OK" : "FALHA");
 
     html.replace("%SAMPLES%", String(_status.samples));
-    html.replace("%EVENTS%",  String(_status.events));
+    html.replace("%EVENTS%", String(_status.events));
 
-    html.replace("%START_DIS%", logging ? "disabled" : "");
-    html.replace("%STOP_DIS%",  logging ? ""         : "disabled");
+    html.replace("%START_DIS%", isAcquisitionActive ? "disabled" : "");
+    html.replace("%STOP_DIS%", isAcquisitionActive ? "" : "disabled");
+
+    // Build file list HTML
+    const int kMaxFilesToList = 50;
+    String filePaths[kMaxFilesToList];
+    int fileCount = _logger.listFiles(filePaths, kMaxFilesToList);
+
+    String fileListHtml = "";
+    if (fileCount == 0)
+    {
+        fileListHtml = "<p style=\"color:#999;padding:8px\">Sem ficheiros</p>";
+    }
+    else
+    {
+        for (int i = 0; i < fileCount; i++)
+        {
+            size_t fileSizeBytes = _logger.getFileSize(filePaths[i].c_str());
+            fileListHtml += "<div class=\"file-item\">";
+            fileListHtml += "<span class=\"file-name\">" + filePaths[i] + "</span>";
+            fileListHtml += "<span class=\"file-size\">" + String(fileSizeBytes / 1024) + " KB</span>";
+            fileListHtml += "<a href=\"/download?file=" + filePaths[i] + "\" class=\"download-btn\">📥</a>";
+            fileListHtml += "</div>";
+        }
+    }
+    html.replace("%FILES%", fileListHtml);
 
     return html;
 }

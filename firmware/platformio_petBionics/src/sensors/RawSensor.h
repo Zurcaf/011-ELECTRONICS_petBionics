@@ -12,12 +12,13 @@ public:
   void begin();
   void updateHealth(uint32_t nowMs);
   int32_t readRaw();
+  float readEstimatedWeightKg();
   bool readImuAxes(int16_t &ax, int16_t &ay, int16_t &az,
                    int16_t &gx, int16_t &gy, int16_t &gz,
                    int16_t &mx, int16_t &my, int16_t &mz);
-  void fillSample(RawSample &sample, uint32_t localMs, uint64_t epochMs, float filtered);
+  void fillSample(RawSample &sample, uint32_t sampleUs, float estimatedWeightKg);
   bool isImuReady() const { return _imuReady; }
-  bool isHx711Ready() const { return _hxReady; }
+  bool isHx711Ready() const { return _hx711Ready; }
 
 private:
   static constexpr uint8_t kWhoAmIReg = 0x75;
@@ -37,10 +38,10 @@ private:
   static constexpr uint8_t kAkCntl1Reg = 0x0A;
   static constexpr uint8_t kAkWhoAmIValue = 0x48;
 
-  uint8_t _analogPin;
+  uint8_t _loadCellAnalogPin;
   SPIClass _spi;
   bool _imuReady;
-  bool _hxReady;
+  bool _hx711Ready;
   uint32_t _lastImuHealthCheckMs;
   uint32_t _lastHxHealthCheckMs;
   uint8_t _imuConsecutiveMisses;
@@ -48,7 +49,8 @@ private:
   uint8_t _hxConsecutiveMisses;
   uint8_t _hxConsecutiveHits;
   uint8_t _hxSuspiciousReads;
-  bool _magSingleMeasurementMode; // Fallback when continuous mode doesn't work
+  bool _magUsesSingleMeasurementMode;                        // Fallback when continuous mode doesn't work
+  static constexpr float kHx711CalibrationFactor = 18570.0f; // Validated in the Arduino calibration sketch
 
   void imuWriteRegister(uint8_t reg, uint8_t data);
   void imuReadBytes(uint8_t reg, uint8_t count, uint8_t *dest);
