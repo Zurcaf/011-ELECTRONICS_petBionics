@@ -34,6 +34,8 @@ private:
     bool _loggingWasActive;
     AppStatus _status;
     bool _lowPowerModeActive;
+    float _latestEstimatedKg;
+    uint32_t _lastEstimatedKgUpdateMs;
 
     void processSample(uint32_t nowMs, uint32_t nowUs);
     void startSession();

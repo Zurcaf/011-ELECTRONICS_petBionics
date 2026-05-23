@@ -6,7 +6,6 @@ static const char kHtmlTemplate[] PROGMEM = R"html(<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="3">
 <title>petBionic</title>
 <style>
   body{font-family:sans-serif;max-width:420px;margin:40px auto;padding:0 16px;background:#fafafa}
@@ -31,39 +30,169 @@ static const char kHtmlTemplate[] PROGMEM = R"html(<!DOCTYPE html>
   .file-name{flex:1;word-break:break-all}
   .file-size{color:#999;margin:0 8px;font-size:.85em}
   .download-btn{background:#007bff;color:#fff;padding:4px 12px;text-decoration:none;border-radius:4px;font-size:.85em;white-space:nowrap;margin-left:8px}
+  .ws-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:#dc3545;vertical-align:middle}
+  .ws-dot.online{background:#28a745}
 </style>
+<script>
+let socket = null;
+
+function setClassByState(elementId, states) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+
+    element.className = element.className.replace(/\b(ok|warn|fail|logging|idle|online)\b/g, '').trim();
+    for (const state of states) {
+        element.classList.add(state);
+    }
+}
+
+function applyStatus(data) {
+    const stateBadge = document.getElementById('stateBadge');
+    const batteryValue = document.getElementById('batteryValue');
+    const batteryClass = document.getElementById('batteryClass');
+    const kgValue = document.getElementById('kgValue');
+    const rollValue = document.getElementById('rollValue');
+    const pitchValue = document.getElementById('pitchValue');
+    const yawValue = document.getElementById('yawValue');
+    const sdValue = document.getElementById('sdValue');
+    const sdClass = document.getElementById('sdClass');
+    const imuValue = document.getElementById('imuValue');
+    const imuClass = document.getElementById('imuClass');
+    const hx711Value = document.getElementById('hx711Value');
+    const hx711Class = document.getElementById('hx711Class');
+    const samplesValue = document.getElementById('samplesValue');
+    const eventsValue = document.getElementById('eventsValue');
+    const startButton = document.getElementById('startButton');
+    const stopButton = document.getElementById('stopButton');
+
+    const active = !!data.acquisitionEnabled;
+    stateBadge.textContent = active ? 'A gravar' : 'Parado';
+    setClassByState('stateBadge', ['badge', active ? 'logging' : 'idle']);
+
+    batteryValue.textContent = Number(data.batteryVoltage).toFixed(2);
+    setClassByState('batteryClass', [data.batteryVoltage < 3.0 ? 'fail' : (data.batteryVoltage < 3.5 ? 'warn' : 'ok')]);
+
+    kgValue.textContent = Number(data.loadCellEstimatedKg).toFixed(3);
+    rollValue.textContent = Number(data.roll).toFixed(2);
+    pitchValue.textContent = Number(data.pitch).toFixed(2);
+    yawValue.textContent = Number(data.yaw).toFixed(2);
+
+    sdValue.textContent = data.sdReady ? 'OK' : 'FALHA';
+    setClassByState('sdClass', [data.sdReady ? 'ok' : 'fail']);
+
+    imuValue.textContent = data.imuReady ? 'OK' : 'FALHA';
+    setClassByState('imuClass', [data.imuReady ? 'ok' : 'fail']);
+
+    hx711Value.textContent = data.hx711Ready ? 'OK' : 'FALHA';
+    setClassByState('hx711Class', [data.hx711Ready ? 'ok' : 'fail']);
+
+    samplesValue.textContent = String(data.samples);
+    eventsValue.textContent = String(data.events);
+
+    startButton.disabled = active;
+    stopButton.disabled = !active;
+}
+
+function connectWebSocket() {
+    const scheme = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+    socket = new WebSocket(scheme + window.location.hostname + ':81/');
+
+    socket.addEventListener('open', () => {
+        setClassByState('wsDot', ['ws-dot', 'online']);
+        const wsState = document.getElementById('wsState');
+        if (wsState) wsState.textContent = 'Ligado';
+    });
+
+    socket.addEventListener('message', (event) => {
+        try {
+            applyStatus(JSON.parse(event.data));
+        } catch (error) {
+            // Ignore malformed payloads.
+        }
+    });
+
+    socket.addEventListener('close', () => {
+        setClassByState('wsDot', ['ws-dot']);
+        const wsState = document.getElementById('wsState');
+        if (wsState) wsState.textContent = 'Desligado';
+        window.setTimeout(connectWebSocket, 1000);
+    });
+
+    socket.addEventListener('error', () => {
+        try { socket.close(); } catch (error) {}
+    });
+}
+
+async function refreshFiles() {
+    try {
+        const response = await fetch('/files', { cache: 'no-store' });
+        if (!response.ok) return;
+
+        const files = await response.json();
+        const fileList = document.getElementById('fileList');
+
+        if (!files.length) {
+            fileList.innerHTML = '<p style="color:#999;padding:8px">Sem ficheiros</p>';
+            return;
+        }
+
+        fileList.innerHTML = files.map((file) => {
+            const sizeKb = Math.floor(file.size / 1024);
+            const encodedFile = encodeURIComponent(file.name);
+            return '<div class="file-item">' +
+                '<span class="file-name">' + file.name + '</span>' +
+                '<span class="file-size">' + sizeKb + ' KB</span>' +
+                '<a href="/download?file=' + encodedFile + '" class="download-btn">📥</a>' +
+                '</div>';
+        }).join('');
+    } catch (error) {
+        // Leave the current file list visible if a poll fails.
+    }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    refreshFiles();
+    setInterval(refreshFiles, 5000);
+    connectWebSocket();
+});
+</script>
 </head>
 <body>
 <h2>🐾 petBionic</h2>
+<p style="color:#666;font-size:.8em;margin:0 0 8px 0"><span id="wsDot" class="ws-dot"></span>WebSocket <span id="wsState">Desligado</span></p>
 <div class="card">
-  <div class="row"><span>Estado</span><span class="badge %BADGE%">%STATE%</span></div>
-  <div class="row"><span>Bateria</span><span class="%BATT_CLASS%"><b>%BATT_V%</b> V</span></div>
-  <div class="row"><span>SD Card</span><span class="%SD_CLASS%">%SD%</span></div>
-  <div class="row"><span>IMU</span><span class="%IMU_CLASS%">%IMU%</span></div>
-  <div class="row"><span>HX711</span><span class="%HX711_CLASS%">%HX711%</span></div>
-  <div class="row"><span>Amostras</span><span><b>%SAMPLES%</b></span></div>
-  <div class="row"><span>Eventos</span><span><b>%EVENTS%</b></span></div>
+    <div class="row"><span>Estado</span><span id="stateBadge" class="badge %BADGE%">%STATE%</span></div>
+    <div class="row"><span>Bateria</span><span id="batteryClass" class="%BATT_CLASS%"><b id="batteryValue">%BATT_V%</b> V</span></div>
+    <div class="row"><span>Kg</span><span><b id="kgValue">%KG%</b> kg</span></div>
+    <div class="row"><span>Roll</span><span><b id="rollValue">%ROLL%</b> °</span></div>
+    <div class="row"><span>Pitch</span><span><b id="pitchValue">%PITCH%</b> °</span></div>
+    <div class="row"><span>Yaw</span><span><b id="yawValue">%YAW%</b> °</span></div>
+    <div class="row"><span>SD Card</span><span id="sdClass" class="%SD_CLASS%"><span id="sdValue">%SD%</span></span></div>
+    <div class="row"><span>IMU</span><span id="imuClass" class="%IMU_CLASS%"><span id="imuValue">%IMU%</span></span></div>
+    <div class="row"><span>HX711</span><span id="hx711Class" class="%HX711_CLASS%"><span id="hx711Value">%HX711%</span></span></div>
+    <div class="row"><span>Amostras</span><span><b id="samplesValue">%SAMPLES%</b></span></div>
+    <div class="row"><span>Eventos</span><span><b id="eventsValue">%EVENTS%</b></span></div>
 </div>
 <div class="actions">
   <form method="POST" action="/start" style="flex:1;display:flex">
-    <button class="btn-start" %START_DIS%>&#9654; Iniciar</button>
+        <button id="startButton" class="btn-start" %START_DIS%>&#9654; Iniciar</button>
   </form>
   <form method="POST" action="/stop" style="flex:1;display:flex">
-    <button class="btn-stop" %STOP_DIS%>&#9632; Parar</button>
+        <button id="stopButton" class="btn-stop" %STOP_DIS%>&#9632; Parar</button>
   </form>
 </div>
 <div class="card">
   <h3 style="margin:0 0 12px 0">📥 Ficheiros (SD)</h3>
-  <div class="file-list">%FILES%</div>
+    <div id="fileList" class="file-list">%FILES%</div>
 </div>
-<p style="color:#999;font-size:.75em;text-align:center">Atualiza automaticamente a cada 3s</p>
+<p style="color:#999;font-size:.75em;text-align:center">Valores atualizados 10x por segundo</p>
 </body>
 </html>)html";
 
 // ---------------------------------------------------------------------------
 
 WebInterface::WebInterface(AppConfig &config, AppStatus &status, RawSdLogger &logger)
-    : _server(80), _config(config), _status(status), _logger(logger)
+    : _server(80), _config(config), _status(status), _logger(logger), _webSocket(81), _lastStatusBroadcastMs(0), _lastStatusPayload()
 {
 }
 
@@ -81,12 +210,29 @@ void WebInterface::begin()
     _server.on("/download", HTTP_GET, [this]()
                { handleDownload(); });
     _server.begin();
+
+    _webSocket.begin();
+    _webSocket.onEvent([this](uint8_t num, WStype_t type, uint8_t *payload, size_t length)
+                      {
+        (void)num;
+        (void)payload;
+        (void)length;
+
+        if (type == WStype_CONNECTED)
+        {
+            broadcastStatus(true);
+        }
+    });
+
     Serial.println("[Web] HTTP server started on port 80");
+    Serial.println("[Web] WebSocket server started on port 81");
 }
 
 void WebInterface::update()
 {
     _server.handleClient();
+    _webSocket.loop();
+    broadcastStatus(false);
 }
 
 void WebInterface::handleRoot()
@@ -152,34 +298,69 @@ void WebInterface::handleDownload()
     _server.setContentLength(requestedFileSize);
     _server.send(200, "text/csv", "");
 
-    // Stream the file in small chunks so the HTTP response stays responsive.
-    // Open the file once and stream sequentially to avoid re-reading the
-    // beginning of the file on each chunk (which caused duplicated blocks).
+    // Stream the file via RawSdLogger using its configured SPI instance
     const size_t kDownloadChunkSize = 2048;
     uint8_t chunkBuffer[kDownloadChunkSize];
     size_t bytesSent = 0;
 
-    File file = SD.open(requestedFilePath.c_str(), FILE_READ);
-    if (!file)
+    while (bytesSent < requestedFileSize)
     {
-        Serial.println("[Download] Could not open file for streaming");
-    }
-    else
-    {
-        while (bytesSent < requestedFileSize)
-        {
-            size_t bytesToRead = (requestedFileSize - bytesSent > kDownloadChunkSize) ? kDownloadChunkSize : (requestedFileSize - bytesSent);
-            size_t bytesRead = file.read(chunkBuffer, bytesToRead);
-            if (bytesRead == 0)
-                break;
+        size_t bytesToRead = (requestedFileSize - bytesSent > kDownloadChunkSize) ? kDownloadChunkSize : (requestedFileSize - bytesSent);
+        size_t bytesRead = 0;
 
-            _server.client().write(chunkBuffer, bytesRead);
-            bytesSent += bytesRead;
+        if (!_logger.readFileAt(requestedFilePath.c_str(), bytesSent, chunkBuffer, bytesToRead, bytesRead))
+        {
+            Serial.println("[Download] Could not read file");
+            break;
         }
-        file.close();
+
+        if (bytesRead == 0)
+            break;
+
+        _server.client().write(chunkBuffer, bytesRead);
+        bytesSent += bytesRead;
     }
 
     Serial.printf("[Download] Complete: %zu / %zu bytes\n", bytesSent, requestedFileSize);
+}
+
+void WebInterface::broadcastStatus(bool force)
+{
+    const uint32_t nowMs = millis();
+    if (!force && (nowMs - _lastStatusBroadcastMs) < 100)
+    {
+        return;
+    }
+
+    _lastStatusBroadcastMs = nowMs;
+    String payload = buildStatusJson();
+    if (!force && payload == _lastStatusPayload)
+    {
+        return;
+    }
+
+    _lastStatusPayload = payload;
+    _webSocket.broadcastTXT(payload);
+}
+
+String WebInterface::buildStatusJson() const
+{
+    char responseBody[256];
+    snprintf(responseBody, sizeof(responseBody),
+             "{\"acquisitionEnabled\":%s,\"sdReady\":%s,\"imuReady\":%s,\"hx711Ready\":%s,\"samples\":%lu,\"events\":%lu,\"batteryVoltage\":%.2f,\"loadCellEstimatedKg\":%.3f,\"roll\":%.2f,\"pitch\":%.2f,\"yaw\":%.2f}",
+             _config.acquisitionEnabled ? "true" : "false",
+             _status.sdReady ? "true" : "false",
+             _status.imuReady ? "true" : "false",
+             _status.hx711Ready ? "true" : "false",
+             static_cast<unsigned long>(_status.samples),
+             static_cast<unsigned long>(_status.events),
+             _status.batteryVoltage,
+             _status.loadCellEstimatedKg,
+             _status.roll,
+             _status.pitch,
+             _status.yaw);
+
+    return String(responseBody);
 }
 
 String WebInterface::buildHtml() const
@@ -202,6 +383,10 @@ String WebInterface::buildHtml() const
     snprintf(battStr, sizeof(battStr), "%.2f", _status.batteryVoltage);
     html.replace("%BATT_V%", battStr);
     html.replace("%BATT_CLASS%", batteryClass);
+    html.replace("%KG%", String(_status.loadCellEstimatedKg, 3));
+    html.replace("%ROLL%", String(_status.roll, 2));
+    html.replace("%PITCH%", String(_status.pitch, 2));
+    html.replace("%YAW%", String(_status.yaw, 2));
 
     html.replace("%SD_CLASS%", _status.sdReady ? "ok" : "fail");
     html.replace("%SD%", _status.sdReady ? "OK" : "FALHA");

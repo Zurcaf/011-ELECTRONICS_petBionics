@@ -23,6 +23,7 @@ public:
   int listFiles(String fileList[], int maxFiles) const;
   size_t getFileSize(const char *filename) const;
   bool readFile(const char *filename, uint8_t *buffer, size_t bufferSize, size_t &bytesRead);
+  bool readFileAt(const char *filename, size_t offset, uint8_t *buffer, size_t bufferSize, size_t &bytesRead);
 
 private:
   // Keep the file open and flush once per second to reduce SD overhead.
@@ -39,6 +40,7 @@ private:
   char _sessionFilePath[96];
   File _activeFile; // kept open for the duration of a session
   uint16_t _samplesSinceLastFlush;
+  bool _sdInUse; // Simple lock to prevent concurrent SD access
 
   // Last written line (simple dedupe guard to avoid accidental repeated rows)
   char _lastLine[320];

@@ -2,6 +2,7 @@
 
 #include <time.h>
 #include <cstring>
+#include <math.h>
 #include <esp_sleep.h>
 
 PetBionicsApp::PetBionicsApp()
@@ -10,10 +11,12 @@ PetBionicsApp::PetBionicsApp()
       _detector(_config.eventThreshold, _config.eventCooldownMs),
       _logger(_config.sdCsPin, _config.sdPath),
       _web(_config, _status, _logger),
-      _sampleCursorUs(0),
-      _loggingWasActive(false),
-      _status{false, false, false, false, 0, 0, 0.0f},
-      _lowPowerModeActive(false)
+    _sampleCursorUs(0),
+    _loggingWasActive(false),
+    _status{false, false, false, false, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+    _lowPowerModeActive(false),
+    _latestEstimatedKg(0.0f),
+    _lastEstimatedKgUpdateMs(0)
 {
 }
 
@@ -24,7 +27,7 @@ void PetBionicsApp::begin()
     delay(50);
 
     Serial.begin(115200);
-    Serial.setTimeout(100); // Non-blocking Serial (battery mode)
+    Serial.setTimeout(100);  // Non-blocking Serial (battery mode)
     delay(100);
 
     // Flush any garbage from Serial
@@ -37,9 +40,9 @@ void PetBionicsApp::begin()
 
     Serial.println("[Init] Sensors...");
     _sensor.begin();
-    _status.imuReady = _sensor.isImuReady();
+    _status.imuReady   = _sensor.isImuReady();
     _status.hx711Ready = _sensor.isHx711Ready();
-    Serial.printf("[Init] IMU:   %s\n", _status.imuReady ? "OK" : "FAIL");
+    Serial.printf("[Init] IMU:   %s\n", _status.imuReady   ? "OK" : "FAIL");
     Serial.printf("[Init] HX711: %s\n", _status.hx711Ready ? "OK" : "FAIL");
 
     Serial.println("[Init] SD...");
@@ -80,9 +83,10 @@ void PetBionicsApp::begin()
 
 void PetBionicsApp::update()
 {
-    // Serial commands can switch the device into and out of low-power mode.
+    // Check for serial commands (sleep/wakeup)
     handleSerialCommand();
 
+    // If in sleep mode, skip main loop
     if (_lowPowerModeActive)
         return;
 
@@ -115,7 +119,7 @@ void PetBionicsApp::update()
         while ((nowUs - _sampleCursorUs) >= _config.samplePeriodUs)
         {
             _sampleCursorUs += _config.samplePeriodUs;
-            processSample(_clock.nowMs(), _sampleCursorUs);
+            processSample(_sampleCursorUs / 1000U, _sampleCursorUs);
         }
     }
     else
@@ -127,17 +131,19 @@ void PetBionicsApp::update()
     }
 
     _status.acquisitionEnabled = _config.acquisitionEnabled;
-    _status.sdReady = _logger.isReady();
-    _status.imuReady = _sensor.isImuReady();
-    _status.hx711Ready = _sensor.isHx711Ready();
+    _status.sdReady            = _logger.isReady();
+    _status.imuReady           = _sensor.isImuReady();
+    _status.hx711Ready         = _sensor.isHx711Ready();
 }
 
 void PetBionicsApp::startSession()
 {
     Serial.println("[Run] START — nova sessão");
-    _status.samples = 0;
-    _status.events = 0;
-    _sampleCursorUs = micros();
+    _status.samples  = 0;
+    _status.events   = 0;
+    _latestEstimatedKg = 0.0f;
+    _lastEstimatedKgUpdateMs = 0;
+    _sampleCursorUs  = micros();
     _orientation.reset();
 
     // Get current time for session filename
@@ -216,7 +222,7 @@ void PetBionicsApp::enterLowPowerMode()
     }
 
     // Disconnect WiFi to save power
-    WiFi.disconnect(true); // true = turn off WiFi radio
+    WiFi.disconnect(true);  // true = turn off WiFi radio
     Serial.println("[Sleep] Entering sleep mode... send 'wakeup' to resume");
     Serial.println("[Sleep] WiFi disabled, low-power mode active");
     Serial.flush();
@@ -224,8 +230,8 @@ void PetBionicsApp::enterLowPowerMode()
     // Loop in sleep mode until wakeup received
     while (_lowPowerModeActive)
     {
-        delay(100);            // Check serial every 100ms
-        handleSerialCommand(); // This clears _lowPowerModeActive on "wakeup"
+        delay(100);  // Check serial every 100ms
+        handleSerialCommand();  // This will set _lowPowerModeActive = false on "wakeup"
     }
 
     // On wakeup: reconnect WiFi
@@ -260,31 +266,36 @@ void PetBionicsApp::processSample(uint32_t nowMs, uint32_t nowUs)
     int16_t gx = 0, gy = 0, gz = 0;
     int16_t mx = 0, my = 0, mz = 0;
 
-    int32_t loadCellRawValue = _sensor.readRaw();
-    float loadCellFilteredValue = _filter.update(static_cast<float>(loadCellRawValue));
-    float loadCellEstimatedKg = _sensor.readEstimatedWeightKg();
+    int32_t   raw      = _sensor.readRaw();
     _sensor.readImuAxes(ax, ay, az, gx, gy, gz, mx, my, mz);
-    EventInfo eventInfo = _detector.update(static_cast<float>(loadCellRawValue), loadCellFilteredValue, nowMs);
+    float     filtered = _filter.update(static_cast<float>(raw));
+    EventInfo event    = _detector.update(static_cast<float>(raw), filtered, nowMs);
 
-    const float dtSeconds = static_cast<float>(_config.samplePeriodUs) / 1000000.0f;
-    const Orientation orientation = _orientation.update(ax, ay, az, gx, gy, gz, mx, my, mz, dtSeconds);
+    // Update the calibrated HX711 weight more slowly than the main sampling loop
+    // so the UI gets a real kg value without stalling the acquisition rate.
+    if ((nowMs - _lastEstimatedKgUpdateMs) >= 250)
+    {
+        float estimatedKg = _sensor.readEstimatedWeightKg();
+        if (!isnan(estimatedKg))
+        {
+            _latestEstimatedKg = estimatedKg;
+            _lastEstimatedKgUpdateMs = nowMs;
+        }
+    }
 
-    RawSample sample{nowUs, loadCellRawValue, loadCellEstimatedKg,
+    const float       dtSeconds = static_cast<float>(_config.samplePeriodUs) / 1000000.0f;
+    const Orientation orient    = _orientation.update(ax, ay, az, gx, gy, gz, mx, my, mz, dtSeconds);
+
+    RawSample sample{nowUs, raw, _latestEstimatedKg,
                      ax, ay, az, gx, gy, gz, mx, my, mz,
-                     orientation.roll, orientation.pitch, orientation.yaw};
+                     orient.roll, orient.pitch, orient.yaw};
+    _logger.append(sample, event);
 
-    // Debug: print sample being appended so we can trace duplicate CSV rows
-    Serial.printf("[Sample] us=%lu raw=%ld est=%.3f evt=%s\n",
-                  static_cast<unsigned long>(sample.sampleUs),
-                  static_cast<long>(sample.loadCellRaw),
-                  sample.loadCellEstimatedKg,
-                  eventInfo.triggered ? "T" : ".");
-
-    _logger.append(sample, eventInfo);
+    _status.loadCellEstimatedKg = _latestEstimatedKg;
+    _status.roll = orient.roll;
+    _status.pitch = orient.pitch;
+    _status.yaw = orient.yaw;
 
     _status.samples++;
-    if (eventInfo.triggered)
-    {
-        _status.events++;
-    }
+    if (event.triggered) { _status.events++; }
 }

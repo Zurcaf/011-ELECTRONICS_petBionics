@@ -192,8 +192,9 @@ namespace
       localtime_r(&seconds, &localTm);
       snprintf(out,
                outSize,
-               "%s/run%03u_%04d%02d%02d_%02d%02d%02d.csv",
+               "%s/%s_run%03u_%04d%02d%02d_%02d%02d%02d.csv",
                dayFolder,
+               base,
                static_cast<unsigned>(runNumber),
                localTm.tm_year + 1900,
                localTm.tm_mon + 1,
@@ -208,8 +209,9 @@ namespace
     // clutter the SD root and is easy to identify later.
     snprintf(out,
              outSize,
-             "%s/run%03u_unsynced_%010lu.csv",
+             "%s/%s_run%03u_unsynced_%010lu.csv",
              dayFolder,
+             base,
              static_cast<unsigned>(runNumber),
              static_cast<unsigned long>(millis()));
   }
@@ -226,7 +228,8 @@ RawSdLogger::RawSdLogger(uint8_t csPin, const char *filePath)
       _sessionStartEpochMs(0),
       _samplesSinceLastFlush(0),
       _hasLastLine(false),
-      _hasLastSampleUs(false)
+      _hasLastSampleUs(false),
+      _sdInUse(false)
 {
   _sessionFilePath[0] = '\0';
   _lastLine[0] = '\0';
@@ -504,10 +507,21 @@ int RawSdLogger::listFiles(String fileList[], int maxFiles) const
     return 0;
   }
 
+  // Avoid concurrent SD access during active logging
+  if (_sdInUse || _sessionIsOpen)
+  {
+    return 0;
+  }
+
+  // Temporarily mark SD as in-use (cast away const for this flag)
+  RawSdLogger *self = const_cast<RawSdLogger *>(this);
+  self->_sdInUse = true;
+
   int fileCount = 0;
   File inboxDir = SD.open(kInboxRootFolder);
   if (!inboxDir)
   {
+    self->_sdInUse = false;
     return 0;
   }
 
@@ -548,6 +562,7 @@ int RawSdLogger::listFiles(String fileList[], int maxFiles) const
     }
   }
 
+  self->_sdInUse = false;
   return fileCount;
 }
 
@@ -558,18 +573,34 @@ size_t RawSdLogger::getFileSize(const char *filename) const
     return 0;
   }
 
+  // Avoid concurrent SD access during active logging
+  if (_sdInUse || _sessionIsOpen)
+  {
+    return 0;
+  }
+
+  RawSdLogger *self = const_cast<RawSdLogger *>(this);
+  self->_sdInUse = true;
+
   File file = SD.open(filename, FILE_READ);
   if (!file)
   {
+    self->_sdInUse = false;
     return 0;
   }
 
   size_t size = file.size();
   file.close();
+  self->_sdInUse = false;
   return size;
 }
 
 bool RawSdLogger::readFile(const char *filename, uint8_t *buffer, size_t bufferSize, size_t &bytesRead)
+{
+  return readFileAt(filename, 0, buffer, bufferSize, bytesRead);
+}
+
+bool RawSdLogger::readFileAt(const char *filename, size_t offset, uint8_t *buffer, size_t bufferSize, size_t &bytesRead)
 {
   bytesRead = 0;
   if (!_sdCardReady || !filename || !buffer || bufferSize == 0)
@@ -580,6 +611,12 @@ bool RawSdLogger::readFile(const char *filename, uint8_t *buffer, size_t bufferS
   File file = SD.open(filename, FILE_READ);
   if (!file)
   {
+    return false;
+  }
+
+  if (offset > 0 && !file.seek(offset))
+  {
+    file.close();
     return false;
   }
 

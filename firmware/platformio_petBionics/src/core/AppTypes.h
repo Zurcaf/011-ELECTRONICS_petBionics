@@ -36,4 +36,8 @@ struct AppStatus
   uint32_t samples;
   uint32_t events;
   float batteryVoltage; // Voltage in volts (e.g. 3.7)
+  float loadCellEstimatedKg;
+  float roll;  // degrees
+  float pitch; // degrees
+  float yaw;   // degrees [0, 360)
 };
