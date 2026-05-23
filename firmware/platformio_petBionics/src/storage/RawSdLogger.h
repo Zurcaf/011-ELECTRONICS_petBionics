@@ -40,7 +40,6 @@ private:
   char _sessionFilePath[96];
   File _activeFile; // kept open for the duration of a session
   uint16_t _samplesSinceLastFlush;
-  bool _sdInUse; // Simple lock to prevent concurrent SD access
 
   // Last written line (simple dedupe guard to avoid accidental repeated rows)
   char _lastLine[320];

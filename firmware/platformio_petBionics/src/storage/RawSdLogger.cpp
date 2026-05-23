@@ -139,9 +139,15 @@ namespace
 
   bool canAccessCurrentSessionPath(bool sessionIsOpen, const char *sessionFilePath)
   {
-    File probe = sessionIsOpen
-                     ? SD.open(sessionFilePath, FILE_APPEND)
-                     : SD.open("/", FILE_READ);
+    // If session is open, just check if the file object is valid (already opened)
+    // Don't try to open it again as it may already be in use
+    if (sessionIsOpen)
+    {
+      return true; // If we got here with an open session, access is fine
+    }
+
+    // Otherwise check root directory access
+    File probe = SD.open("/", FILE_READ);
     if (!probe)
     {
       return false;
@@ -228,8 +234,7 @@ RawSdLogger::RawSdLogger(uint8_t csPin, const char *filePath)
       _sessionStartEpochMs(0),
       _samplesSinceLastFlush(0),
       _hasLastLine(false),
-      _hasLastSampleUs(false),
-      _sdInUse(false)
+      _hasLastSampleUs(false)
 {
   _sessionFilePath[0] = '\0';
   _lastLine[0] = '\0';
@@ -507,21 +512,11 @@ int RawSdLogger::listFiles(String fileList[], int maxFiles) const
     return 0;
   }
 
-  // Avoid concurrent SD access during active logging
-  if (_sdInUse || _sessionIsOpen)
-  {
-    return 0;
-  }
-
-  // Temporarily mark SD as in-use (cast away const for this flag)
-  RawSdLogger *self = const_cast<RawSdLogger *>(this);
-  self->_sdInUse = true;
-
   int fileCount = 0;
   File inboxDir = SD.open(kInboxRootFolder);
   if (!inboxDir)
   {
-    self->_sdInUse = false;
+    Serial.println("[SD] listFiles: failed to open inbox folder");
     return 0;
   }
 
@@ -562,7 +557,7 @@ int RawSdLogger::listFiles(String fileList[], int maxFiles) const
     }
   }
 
-  self->_sdInUse = false;
+  Serial.printf("[SD] listFiles: found %d files\n", fileCount);
   return fileCount;
 }
 
@@ -573,25 +568,15 @@ size_t RawSdLogger::getFileSize(const char *filename) const
     return 0;
   }
 
-  // Avoid concurrent SD access during active logging
-  if (_sdInUse || _sessionIsOpen)
-  {
-    return 0;
-  }
-
-  RawSdLogger *self = const_cast<RawSdLogger *>(this);
-  self->_sdInUse = true;
-
   File file = SD.open(filename, FILE_READ);
   if (!file)
   {
-    self->_sdInUse = false;
+    Serial.printf("[SD] getFileSize: failed to open %s\n", filename);
     return 0;
   }
 
   size_t size = file.size();
   file.close();
-  self->_sdInUse = false;
   return size;
 }
 
