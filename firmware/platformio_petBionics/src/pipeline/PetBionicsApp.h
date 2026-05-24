@@ -36,10 +36,16 @@ private:
     bool _lowPowerModeActive;
     float _latestEstimatedKg;
     uint32_t _lastEstimatedKgUpdateMs;
+    char _cmdBuffer[160];
+    uint8_t _cmdLen;
 
     void processSample(uint32_t nowMs, uint32_t nowUs);
     void startSession();
     void stopSession();
     void handleSerialCommand();
     void enterLowPowerMode();
+    void printSerialStatus() const;
+    void printSerialFiles();
+    void loadWifiCredentials();
+    void saveWifiCredentials();
 };

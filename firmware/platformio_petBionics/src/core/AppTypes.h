@@ -7,6 +7,7 @@ struct RawSample
   uint32_t sampleUs;
   int32_t loadCellRaw;
   float loadCellEstimatedKg;
+  float batteryVoltage;
   int16_t ax;
   int16_t ay;
   int16_t az;

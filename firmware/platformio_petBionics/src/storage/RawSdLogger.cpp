@@ -417,7 +417,7 @@ bool RawSdLogger::ensureHeader(const char *path)
     return false;
   }
 
-  file.println("sample_us,time_of_day,load_cell_raw,load_cell_est_kg,imu_ax,imu_ay,imu_az,imu_gx,imu_gy,imu_gz,imu_mx,imu_my,imu_mz,roll_deg,pitch_deg,yaw_deg");
+  file.println("sample_us,time_of_day,batt_v,load_cell_raw,load_cell_est_kg,imu_ax,imu_ay,imu_az,imu_gx,imu_gy,imu_gz,imu_mx,imu_my,imu_mz,roll_deg,pitch_deg,yaw_deg");
   file.close();
   return true;
 }
@@ -443,9 +443,10 @@ bool RawSdLogger::append(const RawSample &sample, const EventInfo &event)
 
   char line[420];
   int written = snprintf(line, sizeof(line),
-                         "%lu,%s,%ld,%.3f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.2f,%.2f,%.2f\n",
+                         "%lu,%s,%.2f,%ld,%.3f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.2f,%.2f,%.2f\n",
                          static_cast<unsigned long>(sample.sampleUs),
                          timeBuf,
+                         sample.batteryVoltage,
                          static_cast<long>(sample.loadCellRaw),
                          sample.loadCellEstimatedKg,
                          static_cast<int>(sample.ax),
@@ -508,11 +509,15 @@ bool RawSdLogger::append(const RawSample &sample, const EventInfo &event)
 int RawSdLogger::listFiles(String fileList[], int maxFiles) const
 {
   if (!_sdCardReady || maxFiles <= 0)
-  {
     return 0;
-  }
 
-  int fileCount = 0;
+  // Collect ALL files into a temporary buffer before sorting, otherwise the
+  // first maxFiles entries found (filesystem/FAT order = oldest) would be
+  // sorted and returned instead of the most recent ones.
+  const int kMaxCollect = 200;
+  String allFiles[kMaxCollect];
+  int totalCount = 0;
+
   File inboxDir = SD.open(kInboxRootFolder);
   if (!inboxDir)
   {
@@ -521,18 +526,18 @@ int RawSdLogger::listFiles(String fileList[], int maxFiles) const
   }
 
   File dayDir = inboxDir.openNextFile();
-  while (dayDir && fileCount < maxFiles)
+  while (dayDir && totalCount < kMaxCollect)
   {
     if (dayDir.isDirectory())
     {
       File csvFile = dayDir.openNextFile();
-      while (csvFile && fileCount < maxFiles)
+      while (csvFile && totalCount < kMaxCollect)
       {
         if (!csvFile.isDirectory())
         {
           char fullPath[96] = {0};
           snprintf(fullPath, sizeof(fullPath), "%s/%s/%s", kInboxRootFolder, dayDir.name(), csvFile.name());
-          fileList[fileCount++] = String(fullPath);
+          allFiles[totalCount++] = String(fullPath);
         }
         csvFile.close();
         csvFile = dayDir.openNextFile();
@@ -543,22 +548,26 @@ int RawSdLogger::listFiles(String fileList[], int maxFiles) const
   }
   inboxDir.close();
 
-  // Sort in descending order (most recent first) by comparing filenames
-  for (int i = 0; i < fileCount - 1; i++)
+  // Sort descending (most recent first)
+  for (int i = 0; i < totalCount - 1; i++)
   {
-    for (int j = i + 1; j < fileCount; j++)
+    for (int j = i + 1; j < totalCount; j++)
     {
-      if (fileList[j] > fileList[i])
+      if (allFiles[j] > allFiles[i])
       {
-        String temp = fileList[i];
-        fileList[i] = fileList[j];
-        fileList[j] = temp;
+        String temp = allFiles[i];
+        allFiles[i] = allFiles[j];
+        allFiles[j] = temp;
       }
     }
   }
 
-  Serial.printf("[SD] listFiles: found %d files\n", fileCount);
-  return fileCount;
+  // Copy the most recent maxFiles entries to the output array
+  int resultCount = totalCount < maxFiles ? totalCount : maxFiles;
+  for (int i = 0; i < resultCount; i++)
+    fileList[i] = allFiles[i];
+
+  return resultCount;
 }
 
 size_t RawSdLogger::getFileSize(const char *filename) const
@@ -578,6 +587,34 @@ size_t RawSdLogger::getFileSize(const char *filename) const
   size_t size = file.size();
   file.close();
   return size;
+}
+
+bool RawSdLogger::deleteFile(const char *path)
+{
+  if (!_sdCardReady || !path || path[0] == '\0')
+    return false;
+  if (_sessionIsOpen && strcmp(path, _sessionFilePath) == 0)
+  {
+    Serial.println("[SD] deleteFile: nao pode apagar sessao ativa");
+    return false;
+  }
+  return SD.remove(path);
+}
+
+int RawSdLogger::deleteAllFiles()
+{
+  const int kMaxFiles = 50;
+  String filePaths[kMaxFiles];
+  int fileCount = listFiles(filePaths, kMaxFiles);
+  int deleted = 0;
+  for (int i = 0; i < fileCount; i++)
+  {
+    if (_sessionIsOpen && filePaths[i] == String(_sessionFilePath))
+      continue;
+    if (SD.remove(filePaths[i].c_str()))
+      deleted++;
+  }
+  return deleted;
 }
 
 bool RawSdLogger::readFile(const char *filename, uint8_t *buffer, size_t bufferSize, size_t &bytesRead)

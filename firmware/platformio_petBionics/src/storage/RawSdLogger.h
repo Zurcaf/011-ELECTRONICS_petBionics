@@ -25,6 +25,10 @@ public:
   bool readFile(const char *filename, uint8_t *buffer, size_t bufferSize, size_t &bytesRead);
   bool readFileAt(const char *filename, size_t offset, uint8_t *buffer, size_t bufferSize, size_t &bytesRead);
 
+  // File deletion
+  bool deleteFile(const char *path);
+  int  deleteAllFiles();
+
 private:
   // Keep the file open and flush once per second to reduce SD overhead.
   static constexpr uint16_t kSamplesPerFlush = 80;
