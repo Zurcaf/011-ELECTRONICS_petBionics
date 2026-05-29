@@ -18,7 +18,6 @@ PetBionicsApp::PetBionicsApp()
     _status{false, false, false, false, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
     _lowPowerModeActive(false),
     _latestEstimatedKg(0.0f),
-    _lastEstimatedKgUpdateMs(0),
     _cmdBuffer{0},
     _cmdLen(0)
 {
@@ -169,7 +168,6 @@ void PetBionicsApp::startSession()
     _status.samples  = 0;
     _status.events   = 0;
     _latestEstimatedKg = 0.0f;
-    _lastEstimatedKgUpdateMs = 0;
     _sampleCursorUs  = micros();
     _orientation.reset();
 
@@ -442,16 +440,11 @@ void PetBionicsApp::processSample(uint32_t nowMs, uint32_t nowUs)
     float     filtered = _filter.update(static_cast<float>(raw));
     EventInfo event    = _detector.update(static_cast<float>(raw), filtered, nowMs);
 
-    // Update the calibrated HX711 weight more slowly than the main sampling loop
-    // so the UI gets a real kg value without stalling the acquisition rate.
-    if ((nowMs - _lastEstimatedKgUpdateMs) >= 250)
+    // Derive kg from the raw value already read — no second blocking HX711 read.
+    const float estimatedKg = _sensor.rawToKg(raw);
+    if (!isnan(estimatedKg))
     {
-        float estimatedKg = _sensor.readEstimatedWeightKg();
-        if (!isnan(estimatedKg))
-        {
-            _latestEstimatedKg = estimatedKg;
-            _lastEstimatedKgUpdateMs = nowMs;
-        }
+        _latestEstimatedKg = estimatedKg;
     }
 
     const float       dtSeconds = static_cast<float>(_config.samplePeriodUs) / 1000000.0f;

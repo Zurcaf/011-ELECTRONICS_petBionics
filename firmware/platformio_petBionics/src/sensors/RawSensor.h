@@ -12,6 +12,7 @@ public:
   void begin();
   void updateHealth(uint32_t nowMs);
   int32_t readRaw();
+  float rawToKg(int32_t raw) const;
   float readEstimatedWeightKg();
   bool readImuAxes(int16_t &ax, int16_t &ay, int16_t &az,
                    int16_t &gx, int16_t &gy, int16_t &gz,

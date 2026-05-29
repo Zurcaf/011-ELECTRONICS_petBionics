@@ -35,7 +35,6 @@ private:
     AppStatus _status;
     bool _lowPowerModeActive;
     float _latestEstimatedKg;
-    uint32_t _lastEstimatedKgUpdateMs;
     char _cmdBuffer[160];
     uint8_t _cmdLen;
 

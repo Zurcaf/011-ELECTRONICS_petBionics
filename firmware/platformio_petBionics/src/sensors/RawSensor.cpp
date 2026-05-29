@@ -1,6 +1,7 @@
 #include "RawSensor.h"
 
 #include <HX711.h>
+#include <Preferences.h>
 #include <math.h>
 
 #include "../core/Pinout.h"
@@ -136,8 +137,27 @@ void RawSensor::begin()
   _hx711Ready = g_scale.wait_ready_timeout(1000);
   if (_hx711Ready)
   {
-    g_scale.set_scale(kHx711CalibrationFactor);
-    g_scale.tare();
+    Preferences prefs;
+    prefs.begin("loadcell", true);
+    const bool hasCalib = prefs.isKey("offset") && prefs.isKey("factor");
+    const long  savedOffset = prefs.getLong ("offset", 0L);
+    const float savedFactor = prefs.getFloat("factor", kHx711CalibrationFactor);
+    prefs.end();
+
+    g_scale.set_scale(savedFactor);
+
+    if (hasCalib)
+    {
+      g_scale.set_offset(savedOffset);
+      Serial.printf("[HX711] Calibracao NVS: offset=%ld  factor=%.1f counts/kg\n",
+                    savedOffset, savedFactor);
+    }
+    else
+    {
+      g_scale.tare();
+      Serial.println("[HX711] Sem calibracao na NVS — tare temporario aplicado.");
+      Serial.println("[HX711] Corre o sketch load_cell_calibration para calibrar.");
+    }
   }
 }
 
@@ -293,16 +313,31 @@ bool RawSensor::readImuAxes(int16_t &ax, int16_t &ay, int16_t &az,
   return true;
 }
 
+float RawSensor::rawToKg(int32_t raw) const
+{
+  const float scale = g_scale.get_scale();
+  if (scale == 0.0f) return NAN;
+  return static_cast<float>(raw - g_scale.get_offset()) / scale;
+}
+
 int32_t RawSensor::readRaw()
 {
   updateHealth(millis());
 
-  if (_hx711Ready && g_scale.wait_ready_timeout(2))
+  if (!_hx711Ready)
+  {
+    return 0;
+  }
+
+  // At 80 Hz the HX711 produces a new conversion every 12.5 ms.
+  // A 2 ms timeout fires before the next sample is ready; use 15 ms so we
+  // always capture a fresh conversion without busy-waiting past one period.
+  if (g_scale.wait_ready_timeout(15))
   {
     return static_cast<int32_t>(g_scale.read());
   }
 
-  return static_cast<int32_t>(analogRead(_loadCellAnalogPin));
+  return 0;
 }
 
 float RawSensor::readEstimatedWeightKg()
