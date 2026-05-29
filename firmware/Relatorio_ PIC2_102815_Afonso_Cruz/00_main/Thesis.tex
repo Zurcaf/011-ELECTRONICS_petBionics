@@ -1,0 +1,82 @@
+\documentclass[10pt,a4paper,twoside]{report}
+
+\input{04_config/Thesis_Preamble}
+
+\begin{document}
+
+\pagestyle{plain}
+\pagenumbering{roman}
+
+% ----------------------------------------------------------------------
+% Front matter
+% ----------------------------------------------------------------------
+
+\input{01_frontmatter/FrontCover}
+\cleardoublepage
+
+\input{01_frontmatter/Declaration}
+\cleardoublepage
+
+\input{01_frontmatter/Resumo}
+\cleardoublepage
+
+\input{01_frontmatter/Abstract}
+\cleardoublepage
+
+\tableofcontents
+\cleardoublepage
+
+\phantomsection
+\addcontentsline{toc}{section}{\listtablename}
+\listoftables
+\cleardoublepage
+
+\phantomsection
+\addcontentsline{toc}{section}{\listfigurename}
+\listoffigures
+\cleardoublepage
+
+% ----------------------------------------------------------------------
+% Main matter
+% ----------------------------------------------------------------------
+
+\setcounter{page}{1}
+\pagenumbering{arabic}
+
+\input{02_chapters/01_Introduction}
+\cleardoublepage
+
+\input{02_chapters/02_Background}
+\cleardoublepage
+
+\input{02_chapters/03_StateOfTheProblem}
+\cleardoublepage
+
+\input{02_chapters/04_ProposedApproach}
+\cleardoublepage
+
+\input{02_chapters/05_Methodology}
+\cleardoublepage
+
+\input{02_chapters/06_PreliminaryWork}
+\cleardoublepage
+
+\input{02_chapters/07_WorkPlan}
+\cleardoublepage
+
+\input{02_chapters/08_Conclusions}
+\cleardoublepage
+
+% ----------------------------------------------------------------------
+% Bibliography
+% ----------------------------------------------------------------------
+
+\phantomsection
+\addcontentsline{toc}{chapter}{\bibname}
+
+\bibliographystyle{03_bib/abbrvunsrtnat}
+\bibliography{03_bib/Thesis_Bibliography_DB}
+
+\cleardoublepage
+
+\end{document}

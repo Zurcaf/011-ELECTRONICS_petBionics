@@ -1,0 +1,58 @@
+\chapter{Methodology}
+
+\section{Data Acquisition Methodology}
+
+Data is acquired using inertial and force sensors embedded in the prosthesis, enabling simultaneous measurement of motion dynamics and load interaction with the ground. This combination allows capturing both kinematic and kinetic aspects of locomotion, providing a more complete characterization of prosthesis usage \cite{McLaughlin2001,Zhang2022}.
+
+The selected sampling frequency (80 Hz) ensures sufficient temporal resolution to capture gait events while satisfying the Nyquist criterion relative to the expected stride frequency. Considering that canine stride frequency typically lies around 3--4 Hz, with values of approximately 3.5 Hz reported in accelerometry-based studies \cite{Hayati2019}, this sampling rate provides more than 20 samples per gait cycle. This enables accurate detection of gait events such as foot contact and lift-off, while avoiding unnecessary data generation and energy consumption.
+
+The acquired data is stored locally for subsequent processing, ensuring robustness, energy efficiency, and independence from continuous wireless communication.
+
+This approach enables continuous data collection in real-world conditions without relying on laboratory infrastructure, supporting long-term monitoring of locomotor behavior \cite{Zhang2022}.
+
+\section{Biomechanical Metrics}
+
+The analysis focuses on extracting meaningful features from the acquired signals to characterize locomotion patterns. These features are designed to capture key aspects of the interaction between the prosthetic limb and the ground, as well as the consistency of movement over time, while also providing meaningful interpretation and remaining computationally lightweight.
+
+Three main groups of metrics are considered. First, force-related metrics provide information about load distribution on the prosthetic limb, including indicators such as peak load and load consistency across consecutive steps \cite{Oosterlinck2011,Fahie2018}. These metrics are particularly relevant for assessing whether the animal is effectively using the prosthesis.
+
+Second, temporal metrics describe the timing characteristics of locomotion, including step duration, stride regularity, and variability between consecutive gait cycles \cite{Jenkins2018,Zhang2022}. These features provide insight into the stability and repeatability of movement.
+
+Finally, signal variability metrics are used to capture fluctuations in both inertial and force signals, reflecting the degree of stability or irregularity in locomotion. Increased variability has been associated with abnormal or unstable locomotor patterns, potentially indicating poor adaptation or inconsistent use of the prosthesis \cite{Blattler2024}.
+
+Together, these metrics provide a compact representation of locomotor behavior and serve as input to the subsequent classification model for assessing prosthesis adaptation. The selected features are designed to balance descriptive power with computational simplicity, enabling efficient processing in embedded or resource-constrained systems \cite{Preece2009,Bulling2014}.
+
+\section{Adaptation Assessment Strategy}
+
+This approach is particularly suitable for real-world scenarios where instrumenting multiple limbs is impractical, directly addressing a key limitation of existing gait analysis methods.
+
+Since only the prosthetic limb is instrumented, traditional symmetry-based metrics commonly used in gait analysis are not directly applicable \cite{Oosterlinck2011,Fahie2018}. Instead, adaptation is assessed using proxy indicators derived from the consistency and stability of the measured signals.
+
+A well-adapted prosthesis is expected to exhibit consistent load patterns, regular temporal behavior, and low variability across consecutive gait cycles, as stable locomotor patterns are typically associated with normal gait.
+
+In contrast, poor adaptation may result in irregular loading, increased variability, and inconsistent movement patterns.
+
+This approach enables the assessment of adaptation based solely on the behavior of the prosthetic limb, without requiring measurements from other limbs. By focusing on longitudinal consistency rather than inter-limb comparison, the system overcomes a fundamental limitation of traditional gait analysis methods and provides meaningful insight into prosthesis usage in real-world conditions.
+\section{Machine Learning Formulation}
+
+The assessment of prosthesis adaptation is formulated as a supervised classification problem. The objective is to determine the adaptation state of the animal based on features extracted from the acquired sensor data.
+
+The input to the model consists of a set of biomechanical features derived from inertial and force measurements, including statistical descriptors, temporal characteristics, and force-related metrics. These features provide a compact representation of locomotion patterns and their variability over time.
+
+The output of the model corresponds to the estimated adaptation state, which may be defined as a binary classification (adapted vs non-adapted) or as a multi-level scale representing different degrees of adaptation.
+
+Tree-based ensemble methods, particularly Random Forest, are considered a suitable starting point due to their robustness to noise, ability to model non-linear relationships, and strong performance with limited datasets \cite{Bulling2014,Wang2019}.
+
+Other models, such as logistic regression and support vector machines, may also be explored during the experimental phase. The final model selection will be based on performance evaluation using the collected data, taking into account both classification performance and model interpretability.
+
+This formulation allows the system to automatically infer adaptation states from longitudinal data, enabling objective and scalable assessment of prosthesis usage in real-world conditions.
+
+\section{Evaluation Plan}
+
+The evaluation will be based on the analysis of collected datasets, focusing on the consistency and evolution of locomotion patterns over time. The proposed metrics will be used to characterize the behavior of the prosthetic limb under different conditions.
+
+Performance will be assessed by comparing locomotion patterns across multiple acquisition sessions, analyzing intra-subject variability and the progression of adaptation. Changes in the extracted features over time will be used as indicators of improvement or degradation in prosthesis usage.
+
+Additionally, the classification model will be evaluated based on its ability to distinguish between different adaptation states, using standard performance metrics such as accuracy, precision, recall, and consistency across repeated trials. This evaluation strategy enables both quantitative validation of the proposed approach and qualitative interpretation of locomotor behavior.
+
+This longitudinal analysis is particularly relevant in the context of prosthetic adaptation, as improvements are expected to occur gradually over time \cite{Rosen2022,Wendland2019}. This is especially important given that subjective clinical assessments may not fully capture gradual changes in prosthesis usage.

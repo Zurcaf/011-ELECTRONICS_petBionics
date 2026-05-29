@@ -1,0 +1,149 @@
+% ----------------------------------------------------------------------
+% Bibliography
+% ----------------------------------------------------------------------
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{notoccite}
+
+% ----------------------------------------------------------------------
+% Language and encoding
+% ----------------------------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+
+% ----------------------------------------------------------------------
+% Cover and declaration labels
+% ----------------------------------------------------------------------
+\newcommand{\coverThesis}{Thesis to obtain the Master of Science Degree in}
+\newcommand{\coverSupervisors}{Supervisor(s)}
+\newcommand{\coverExaminationCommittee}{Examination Committee}
+\newcommand{\coverChairperson}{Chairperson}
+\newcommand{\coverSupervisor}{Supervisor}
+\newcommand{\coverMemberCommittee}{Member of the Committee}
+
+\newcommand{\declarationTitle}{Declaration}
+\newcommand{\declarationText}{I declare that this document is an original work of my own authorship and that it fulfills all the requirements of the Code of Conduct and Good Practices of the Universidade de Lisboa.}
+
+% ----------------------------------------------------------------------
+% Fonts
+% ----------------------------------------------------------------------
+\renewcommand{\rmdefault}{phv}
+\renewcommand{\sfdefault}{phv}
+
+\def\FontLn{\usefont{T1}{phv}{m}{n}\fontsize{16pt}{16pt}\selectfont}
+\def\FontLb{\usefont{T1}{phv}{b}{n}\fontsize{16pt}{16pt}\selectfont}
+\def\FontMn{\usefont{T1}{phv}{m}{n}\fontsize{14pt}{14pt}\selectfont}
+\def\FontMb{\usefont{T1}{phv}{b}{n}\fontsize{14pt}{14pt}\selectfont}
+\def\FontSn{\usefont{T1}{phv}{m}{n}\fontsize{12pt}{12pt}\selectfont}
+
+% ----------------------------------------------------------------------
+% Layout
+% ----------------------------------------------------------------------
+\usepackage{geometry}
+\geometry{
+  a4paper,
+  tmargin=2.5cm,
+  bmargin=2.5cm,
+  lmargin=2.5cm,
+  rmargin=2.5cm,
+  verbose=false
+}
+
+\usepackage{setspace}
+\renewcommand{\baselinestretch}{1.5}
+
+\usepackage{indentfirst}
+
+% ----------------------------------------------------------------------
+% Figures and tables
+% ----------------------------------------------------------------------
+\usepackage{graphicx}
+\usepackage{subfig}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{rotating}
+\usepackage{dcolumn}
+
+\newcolumntype{d}{D{.}{.}{-1}}
+\newcolumntype{e}{D{E}{E}{-1}}
+
+% ----------------------------------------------------------------------
+% Mathematics
+% ----------------------------------------------------------------------
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amsfonts}
+
+% ----------------------------------------------------------------------
+% Algorithms, if needed
+% ----------------------------------------------------------------------
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% ----------------------------------------------------------------------
+% Gantt charts
+% ----------------------------------------------------------------------
+\usepackage{pgfgantt}
+
+% ----------------------------------------------------------------------
+% PDF and links
+% ----------------------------------------------------------------------
+\usepackage{pdfpages}
+\usepackage{xurl}
+
+\usepackage[
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black,
+  filecolor=blue!50!black,
+  bookmarks=true,
+  bookmarksopen=true,
+  bookmarksnumbered=true,
+  pdfstartview=FitH,
+  pdfpagemode=UseOutlines,
+  pdfdisplaydoctitle=true,
+  breaklinks=true,
+  backref=page,
+  pdftitle={Pet Bionics},
+  pdfauthor={Afonso Barcelos Perestrelo Cruz},
+  pdfsubject={Instrumented bionic prosthesis for canine locomotion analysis},
+  pdfkeywords={canine prosthetics, gait analysis, embedded systems, inertial sensors, machine learning}
+]{hyperref}
+
+\usepackage{bookmark}
+\usepackage[figure,table]{hypcap}
+
+% Backlinks in bibliography
+\renewcommand*{\backref}[1]{}
+\renewcommand*{\backrefalt}[4]{%
+  \ifcase #1 %
+  \or
+    (cited on p.~#2)%
+  \else
+    (cited on pp.~#2)%
+  \fi
+}
+
+
+\usepackage[figure,table]{hypcap}
+
+% ----------------------------------------------------------------------
+% Useful commands
+% ----------------------------------------------------------------------
+\newcommand{\ud}{\mathrm{d}}
+\newcommand{\degree}{\ensuremath{^\circ\,}}
+\newcommand{\mcol}{\multicolumn}
+
+\newcommand{\eqnref}[1]{(\ref{#1})}
+\newcommand{\class}[1]{\texttt{#1}}
+\newcommand{\package}[1]{\texttt{#1}}
+\newcommand{\file}[1]{\texttt{#1}}
+\newcommand{\BibTeX}{\textsc{Bib}\TeX}
+
+\newcommand{\tr}[1]{{\ensuremath{\textrm{#1}}}}
+\newcommand{\tb}[1]{{\ensuremath{\textbf{#1}}}}
+\newcommand{\ti}[1]{{\ensuremath{\textit{#1}}}}
+\newcommand{\mc}[1]{{\ensuremath{\mathcal{#1}}}}
+\newcommand{\mr}[1]{{\ensuremath{\mathrm{#1}}}}
+\newcommand{\mb}[1]{{\ensuremath{\mathbf{#1}}}}
+\newcommand{\bs}[1]{\ensuremath{\boldsymbol{#1}}}

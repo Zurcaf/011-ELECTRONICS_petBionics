@@ -1,0 +1,53 @@
+\chapter{Background}
+
+\section{Canine Locomotion and Gait}
+
+Canine locomotion is characterized by cyclic and coordinated limb movements, typically described through the gait cycle. This cycle is composed of two primary phases: stance, during which the paw is in contact with the ground and supports body weight, and swing, where the limb advances forward in preparation for the next contact \cite{Jenkins2018, Zhang2022}.
+
+A complete sequence of stance and swing constitutes a stride, which represents the fundamental unit of locomotion analysis. In quadrupeds, coordination between all four limbs defines gait patterns such as walk, trot, and gallop, each characterized by specific temporal relationships between limb contacts \cite{Zhang2022}.
+
+In healthy animals, gait is consistent and repeatable, with stable temporal and spatial patterns. Deviations from these patterns, including irregular stride timing, altered stance duration, or asymmetrical limb loading, are commonly associated with musculoskeletal or neurological disorders \cite{Blattler2024}. 
+
+Accurate characterization of these deviations is essential for clinical evaluation. However, visual gait assessment is inherently limited, as subtle biomechanical changes occur at timescales beyond human perception, motivating the use of quantitative measurement techniques \cite{McLaughlin2001}.
+
+\section{Biomechanical Parameters in Gait Analysis}
+
+Gait analysis relies on the quantification of biomechanical parameters describing motion and force interaction between the limb and the ground. These parameters are typically divided into kinetic and kinematic domains.
+
+Kinetic analysis focuses on forces, particularly ground reaction forces (GRF), which represent the interaction between the paw and the ground during the stance phase \cite{McLaughlin2001}.
+GRF can be decomposed into vertical, craniocaudal (braking and propulsion), and mediolateral components. From these, clinically relevant metrics such as peak force and impulse are derived, providing insight into load distribution and limb functionality.
+
+Ground reaction forces are considered the gold standard for quantitative gait assessment, as they provide direct measurement of limb loading during locomotion \cite{McLaughlin2001, Budsberg1996}. However, GRF measurements typically require laboratory-based equipment such as force plates or instrumented treadmills, which constrain the measurement environment and limit applicability in real-world or continuous monitoring scenarios \cite{McLaughlin2001}.
+Kinematic analysis describes motion independently of forces, including joint angles, stride length, and temporal parameters such as stance time, swing time, and stride duration. These metrics are essential for characterizing movement patterns and detecting abnormalities.
+
+Temporal parameters, in particular, are strongly correlated with locomotion dynamics. For example, stance time is inversely related to velocity and directly influences force generation, making it a relevant proxy for gait characterization \cite{McLaughlin1994}.
+
+Symmetry between limbs is widely used as an indicator of normal gait. In quadrupeds, asymmetries in force distribution or timing between contralateral limbs are associated with lameness or compensatory mechanisms \cite{Budsberg1996}. In scenarios where only a single limb is instrumented, alternative metrics such as intra-stride variability and temporal consistency must be considered.
+
+Modern gait analysis systems, including pressure-sensitive walkways, provide reliable measurement of temporospatial variables and symmetry indices, enabling objective evaluation across different dog sizes and gait types \cite{Fahie2018}.
+
+\section{Canine Prosthetics and Adaptation}
+
+Prosthetic devices for animals aim to restore mobility and improve quality of life following limb loss or dysfunction. In canine patients, prostheses are increasingly considered as an alternative to full limb amputation, with the goal of preserving quadrupedal locomotion and reducing long-term biomechanical complications \cite{Wendland2019}.
+
+Successful prosthesis use depends on the animal’s ability to adapt to the device. This adaptation involves biomechanical integration, including effective load bearing, stable gait patterns, and coordination with the remaining limbs.
+
+Currently, adaptation is primarily evaluated through observational methods, including veterinary assessment and owner-reported outcomes. Indicators of poor adaptation include reduced limb loading, irregular gait patterns, and avoidance behaviors.
+
+Despite generally positive owner satisfaction and acceptable functional outcomes, complication rates remain high. Common issues include skin lesions, mechanical failures, and device rejection, highlighting the challenges associated with prosthetic integration \cite{Rosen2022}.
+A major limitation in current approaches is the lack of objective and quantitative tools for assessing adaptation. Most evaluations rely on subjective scoring systems, which are insufficient to capture subtle biomechanical changes. This gap motivates the development of sensing-based systems capable of providing continuous and quantitative assessment.
+
+
+\section{Sensing Technologies for Locomotion Monitoring}
+
+Advances in sensing technologies have enabled the development of wearable and embedded systems for locomotion analysis beyond laboratory environments.
+
+Inertial Measurement Units (IMUs) are widely used to capture acceleration and angular velocity, providing detailed information about movement dynamics. These sensors are compact, low-cost, and suitable for continuous monitoring \cite{Jenkins2018}.
+IMU-based systems have demonstrated high accuracy in detecting gait events such as stance and swing phases, with errors in the order of milliseconds when validated against video-based ground truth \cite{Jenkins2018}. Multi-sensor configurations further enable full characterization of quadrupedal gait, including inter-limb coordination and gait transitions \cite{Zhang2022}.
+Compared to force-plate systems, IMUs provide a portable and scalable alternative, enabling data acquisition in real-world conditions. However, IMUs do not directly measure forces, limiting their ability to quantify limb loading.
+
+Force sensing technologies, such as load cells and pressure-based systems, provide direct measurement of interaction forces and can approximate GRF outside laboratory environments. These measurements are critical for assessing weight-bearing behavior and prosthetic performance.
+
+The combination of inertial sensing (kinematics) and force sensing (kinetics) enables a more comprehensive characterization of locomotion. Such multimodal approaches allow capturing both movement patterns and load distribution, which is particularly relevant for prosthetic evaluation.
+
+Therefore, integrating IMU-based kinematic data with force measurements represents a promising approach for developing portable and objective gait assessment systems capable of operating in real-world scenarios.

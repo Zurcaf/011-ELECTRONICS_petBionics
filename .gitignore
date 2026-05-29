@@ -15,6 +15,7 @@ $RECYCLE.BIN/
 *.swp
 *.swo
 *~
+~$*
 .vscode/*
 !.vscode/extensions.json
 
