@@ -123,6 +123,17 @@ function connectWebSocket() {
     });
 }
 
+function formatFileName(path) {
+    // Expected: /inbox/YYYYMMDD/runNNN_YYYY-MM-DD_HH-MM-SS.csv
+    const parts = path.split('/').filter(Boolean);
+    if (parts.length < 3) return path;
+    const file = parts[2].replace('.csv', '');
+    const m = file.match(/^(run\d+)_(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})$/);
+    if (m) return m[1] + ' · ' + m[4] + '/' + m[3] + '/' + m[2] + ' ' + m[5] + ':' + m[6] + ':' + m[7];
+    if (file.includes('unsynced')) return file.replace(/_unsynced_\d+$/, '') + ' · data desconhecida';
+    return file;
+}
+
 async function refreshFiles() {
     try {
         const response = await fetch('/files', { cache: 'no-store' });
@@ -140,7 +151,7 @@ async function refreshFiles() {
             const sizeKb = Math.floor(file.size / 1024);
             const encodedFile = encodeURIComponent(file.name);
             return '<div class="file-item">' +
-                '<span class="file-name">' + file.name + '</span>' +
+                '<span class="file-name">' + formatFileName(file.name) + '</span>' +
                 '<span class="file-size">' + sizeKb + ' KB</span>' +
                 '<a href="/download?file=' + encodedFile + '" class="download-btn">📥</a>' +
                 '</div>';
@@ -294,7 +305,10 @@ void WebInterface::handleDownload()
         return;
     }
 
-    _server.sendHeader("Content-Disposition", "attachment; filename=\"" + requestedFilePath + "\"");
+    const char *rawReqPath = requestedFilePath.c_str();
+    const char *lastSlash = strrchr(rawReqPath, '/');
+    String downloadBaseName = lastSlash ? String(lastSlash + 1) : requestedFilePath;
+    _server.sendHeader("Content-Disposition", "attachment; filename=\"" + downloadBaseName + "\"");
     _server.setContentLength(requestedFileSize);
     _server.send(200, "text/csv", "");
 
@@ -401,29 +415,7 @@ String WebInterface::buildHtml() const
     html.replace("%START_DIS%", isAcquisitionActive ? "disabled" : "");
     html.replace("%STOP_DIS%", isAcquisitionActive ? "" : "disabled");
 
-    // Build file list HTML
-    const int kMaxFilesToList = 50;
-    String filePaths[kMaxFilesToList];
-    int fileCount = _logger.listFiles(filePaths, kMaxFilesToList);
-
-    String fileListHtml = "";
-    if (fileCount == 0)
-    {
-        fileListHtml = "<p style=\"color:#999;padding:8px\">Sem ficheiros</p>";
-    }
-    else
-    {
-        for (int i = 0; i < fileCount; i++)
-        {
-            size_t fileSizeBytes = _logger.getFileSize(filePaths[i].c_str());
-            fileListHtml += "<div class=\"file-item\">";
-            fileListHtml += "<span class=\"file-name\">" + filePaths[i] + "</span>";
-            fileListHtml += "<span class=\"file-size\">" + String(fileSizeBytes / 1024) + " KB</span>";
-            fileListHtml += "<a href=\"/download?file=" + filePaths[i] + "\" class=\"download-btn\">📥</a>";
-            fileListHtml += "</div>";
-        }
-    }
-    html.replace("%FILES%", fileListHtml);
+    html.replace("%FILES%", "<p style=\"color:#999;padding:8px\">A carregar...</p>");
 
     return html;
 }

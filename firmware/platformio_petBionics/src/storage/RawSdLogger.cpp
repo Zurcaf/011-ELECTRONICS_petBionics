@@ -19,20 +19,6 @@ namespace
   // Set to 0 for no adjustment; set to 1 if localtime is 1 hour behind.
   static constexpr int kLocalTimeOffsetHours = 1;
 
-  void copyBaseNameWithoutExtension(const char *path, char *out, size_t outSize);
-
-  void stripLeadingSlash(char *baseName)
-  {
-    if (!baseName)
-    {
-      return;
-    }
-    if (baseName[0] == '/')
-    {
-      memmove(baseName, baseName + 1, strlen(baseName));
-    }
-  }
-
   bool hasCsvExtension(const char *name)
   {
     if (!name)
@@ -121,9 +107,9 @@ namespace
     return csvCount;
   }
 
-  uint16_t calculateNextRunNumber(const char *basePath, const char *dayFolder, uint64_t epochMs)
+  uint16_t calculateNextRunNumber(const char *dayFolder, uint64_t epochMs)
   {
-    if (!basePath || !dayFolder || epochMs == 0)
+    if (!dayFolder || epochMs == 0)
     {
       return 0;
     }
@@ -156,51 +142,23 @@ namespace
     return true;
   }
 
-  void copyBaseNameWithoutExtension(const char *path, char *out, size_t outSize)
+  void formatSessionFilePath(const char *dayFolder, uint64_t epochMs, uint16_t runNumber, char *out, size_t outSize)
   {
-    if (!path || !out || outSize == 0)
+    if (!dayFolder || !out || outSize == 0)
     {
       return;
     }
-
-    size_t len = strnlen(path, outSize - 1);
-    strncpy(out, path, len);
-    out[len] = '\0';
-
-    const char *dot = strrchr(out, '.');
-    if (dot && strcmp(dot, ".csv") == 0)
-    {
-      out[dot - out] = '\0';
-    }
-  }
-
-  void formatSessionFilePath(const char *basePath, const char *dayFolder, uint64_t epochMs, uint16_t runNumber, char *out, size_t outSize)
-  {
-    if (!basePath || !dayFolder || !out || outSize == 0)
-    {
-      return;
-    }
-
-    char base[64] = {0};
-    copyBaseNameWithoutExtension(basePath, base, sizeof(base));
-    if (base[0] == '\0')
-    {
-      strncpy(base, "/raw_log", sizeof(base) - 1);
-    }
-    stripLeadingSlash(base);
 
     if (epochMs > 0)
     {
       time_t seconds = static_cast<time_t>(epochMs / 1000ULL);
-      // Apply optional local offset so filenames reflect local day/time
       seconds += static_cast<time_t>(kLocalTimeOffsetHours) * 3600;
       struct tm localTm;
       localtime_r(&seconds, &localTm);
       snprintf(out,
                outSize,
-               "%s/%s_run%03u_%04d%02d%02d_%02d%02d%02d.csv",
+               "%s/run%03u_%04d-%02d-%02d_%02d-%02d-%02d.csv",
                dayFolder,
-               base,
                static_cast<unsigned>(runNumber),
                localTm.tm_year + 1900,
                localTm.tm_mon + 1,
@@ -211,13 +169,10 @@ namespace
       return;
     }
 
-    // No time sync – place file inside the /unsynced folder so it doesn't
-    // clutter the SD root and is easy to identify later.
     snprintf(out,
              outSize,
-             "%s/%s_run%03u_unsynced_%010lu.csv",
+             "%s/run%03u_unsynced_%010lu.csv",
              dayFolder,
-             base,
              static_cast<unsigned>(runNumber),
              static_cast<unsigned long>(millis()));
   }
@@ -295,13 +250,13 @@ bool RawSdLogger::startSession(uint64_t startEpochMs)
     return false;
   }
 
-  uint16_t runNumber = calculateNextRunNumber(_logBasePath, dayFolder, startEpochMs);
+  uint16_t runNumber = calculateNextRunNumber(dayFolder, startEpochMs);
   if (runNumber == 0)
   {
     runNumber = 1;
   }
 
-  formatSessionFilePath(_logBasePath, dayFolder, startEpochMs, runNumber, _sessionFilePath, sizeof(_sessionFilePath));
+  formatSessionFilePath(dayFolder, startEpochMs, runNumber, _sessionFilePath, sizeof(_sessionFilePath));
   _sessionIsOpen = true;
   _sessionStartEpochMs = startEpochMs;
 
