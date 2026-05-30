@@ -70,5 +70,11 @@ androidApp/.gradle/
 0.documentation/*Autosaved*.pptx
 0.documentation/*Photoroom*.png
 
+# --- Raw test recordings (kept locally, not in repo) ---
+TestData/
+analysis/.venv/
+analysis/__pycache__/
+analysis/**/__pycache__/
+
 # --- Keep project assets by default ---
 # (Production gerbers, BOMs, docs, source code remain tracked)
