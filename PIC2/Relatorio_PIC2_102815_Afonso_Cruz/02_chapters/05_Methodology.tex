@@ -4,7 +4,7 @@
 
 Data is acquired using inertial and force sensors embedded in the prosthesis, enabling simultaneous measurement of motion dynamics and load interaction with the ground. This combination allows capturing both kinematic and kinetic aspects of locomotion, providing a more complete characterization of prosthesis usage \cite{McLaughlin2001,Zhang2022}.
 
-The selected sampling frequency (80 Hz) ensures sufficient temporal resolution to capture gait events while satisfying the Nyquist criterion relative to the expected stride frequency. Considering that canine stride frequency typically lies around 3--4 Hz, with values of approximately 3.5 Hz reported in accelerometry-based studies \cite{Hayati2019}, this sampling rate provides more than 20 samples per gait cycle. This enables accurate detection of gait events such as foot contact and lift-off, while avoiding unnecessary data generation and energy consumption.
+Data is acquired at 80\,Hz, as justified in Chapter~4, providing more than 20 samples per gait cycle and sufficient resolution to detect foot contact and lift-off events.
 
 The acquired data is stored locally for subsequent processing, ensuring robustness, energy efficiency, and independence from continuous wireless communication.
 
@@ -23,8 +23,6 @@ Finally, signal variability metrics are used to capture fluctuations in both ine
 Together, these metrics provide a compact representation of locomotor behavior and serve as input to the subsequent classification model for assessing prosthesis adaptation. The selected features are designed to balance descriptive power with computational simplicity, enabling efficient processing in embedded or resource-constrained systems \cite{Preece2009,Bulling2014}.
 
 \section{Adaptation Assessment Strategy}
-
-This approach is particularly suitable for real-world scenarios where instrumenting multiple limbs is impractical, directly addressing a key limitation of existing gait analysis methods.
 
 Since only the prosthetic limb is instrumented, traditional symmetry-based metrics commonly used in gait analysis are not directly applicable \cite{Oosterlinck2011,Fahie2018}. Instead, adaptation is assessed using proxy indicators derived from the consistency and stability of the measured signals.
 

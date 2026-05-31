@@ -1,29 +1,49 @@
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%                                                                      %
-%     File: Thesis_Conclusions.tex                                     %
-%     Tex Master: Thesis.tex                                           %
-%                                                                      %
-%     Author: Andre C. Marta                                           %
-%     Last modified :  4 Mar 2024                                      %
-%                                                                      %
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 \chapter{Conclusions}
 \label{chapter:conclusions}
 
-Insert your chapter material here.
+\section{Summary}
 
+This report describes the first phase of the development of an instrumented
+canine prosthesis for objective locomotion monitoring.
+The motivation is grounded in a clear clinical gap: prosthetic adaptation in
+animals is currently assessed through subjective observation, which limits
+consistency and reproducibility.
 
-% ----------------------------------------------------------------------
+The proposed approach addresses this gap by embedding inertial and force
+sensing directly into the prosthetic structure, enabling continuous,
+non-invasive, and quantitative assessment during real-world activity.
+A review of the state of the art confirmed that no existing solution combines
+kinetic and kinematic sensing in a single-limb wearable prosthetic device.
+
 \section{Achievements}
-\label{section:achievements}
 
-The major achievements of the present work.
+The main achievements of this phase are:
 
+\begin{itemize}
+  \item A fully functional hardware prototype integrating the MPU-9250 IMU,
+        HX711 load cell, microSD storage, and ESP32-C3 wireless
+        microcontroller in a compact, battery-powered form factor;
+  \item A firmware pipeline operating at 80\,Hz, including force filtering,
+        quaternion-based orientation estimation, local CSV storage, and a
+        browser-accessible web interface for real-time monitoring and data
+        retrieval;
+  \item Sensor validation confirming correct peripheral initialisation, load
+        cell calibration, and orientation estimation with smooth dynamic
+        tracking;
+  \item A preliminary dataset of 11 acquisition runs recorded with the
+        prototype fitted to a canine subject in an initial field session,
+        demonstrating that the system captures the periodic structure of
+        the gait cycle in both force and inertial channels under real conditions.
+\end{itemize}
 
-% ----------------------------------------------------------------------
-\section{Future Work}
-\label{section:future}
+These results demonstrate that the proposed instrumented prosthesis is viable
+as a platform for biomechanical data acquisition, and provide a solid
+foundation for the planned work outlined in Chapter~\ref{chapter:workplan}.
 
-A few ideas for future work.
+\section{Next Steps}
 
+The immediate priorities for the next phase are: structured data acquisition
+sessions with canine subjects under controlled and free-movement conditions;
+IMU mounting calibration to align the sensor frame with the prosthetic
+anatomical frame; and feature extraction from the collected dataset to begin
+characterising adaptation-related patterns.

@@ -1,93 +1,51 @@
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%  Chapter 6 — Preliminary Work
-%
-%  TODO markers indicate where experimental data must be inserted.
-%  Figure placeholders compile to grey boxes — replace with real PDFs
-%  from 05_figures/06_preliminary/ once experiments are complete.
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-% Helper: grey placeholder box for missing figures
-\newcommand{\figplaceholder}[2][8cm]{%
-  \fbox{\begin{minipage}[c][#1][c]{0.85\textwidth}
-    \centering\textit{[TODO figure: #2]}
-  \end{minipage}}%
-}
-
 \chapter{Preliminary Work}
 \label{chapter:preliminary}
 
-This chapter presents the work carried out during the first phase of the project,
-covering hardware assembly, firmware development, and initial validation experiments.
-The results described here represent the current state of the prototype and provide
-the empirical basis for the planned data acquisition campaigns.
+This chapter presents the work carried out during the first phase of the
+project, covering hardware assembly, firmware development, initial validation
+experiments, and preliminary data collection.
+The prototype is fully functional and the results described here demonstrate
+the viability of the proposed sensing approach as a basis for the planned
+data acquisition campaigns.
 
 % ----------------------------------------------------------------------
 \section{Hardware Prototype}
 \label{section:hw_prototype}
 
-An initial prototype of the instrumented prosthesis has been assembled and validated.
-The system integrates all sensing, processing, and storage components into a compact
-embedded platform designed to fit within the structural constraints of the prosthetic device.
+A working prototype of the instrumented prosthesis has been assembled and
+validated.
+The system integrates all sensing, processing, and storage components in a
+compact embedded platform designed to fit within the structural constraints
+of the prosthetic device.
 
-\subsection{Component Overview}
+Figure~\ref{fig:prototype_exterior} shows the exterior of the assembled
+prosthesis, and Figure~\ref{fig:prototype_interior} shows the internal
+electronics.
+Table~\ref{tab:hw_components} lists the main components and their roles.
+The MPU-9250 and microSD card share the SPI bus with independent chip-select
+lines; the HX711 uses a dedicated two-wire interface.
+Two 250\,mAh LiPo cells connected in parallel supply 500\,mAh at 3.7\,V
+to the microcontroller's onboard 3.3\,V regulator.
+Battery voltage is monitored continuously via an analog pin.
 
-The hardware architecture is built around the Seeed Studio XIAO ESP32-C3
-microcontroller~\cite{ESP32C3}, selected for its compact form factor
-(21$\times$17.5\,mm), integrated Wi-Fi~802.11b/g/n, and low operating voltage
-(3.3\,V), making it suitable for battery-powered wearable applications.
-
-Inertial sensing is provided by the MPU-9250 nine-axis IMU~\cite{MPU9250},
-which integrates a triple-axis accelerometer, a triple-axis gyroscope, and the
-AK8963 three-axis magnetometer in a single package.
-The device communicates over SPI and provides sufficient measurement range
-($\pm$8\,g accelerometer, $\pm$1000\,°/s gyroscope) for the accelerations
-expected during canine locomotion.
-
-Force measurement is performed using an LCR02 inline load
-cell~\cite{LCR02} interfaced through an HX711 24-bit
-analog-to-digital converter~\cite{HX711}.
-The HX711 supports a maximum output data rate of approximately 80\,Hz,
-which defines the acquisition rate of the entire pipeline.
-A calibration factor of $k = 18570.0$ was determined empirically during
-bench testing using a reference weight, establishing the relationship
-between raw ADC counts and force in kilograms.
-
-Data is stored locally on a microSD card using the SPI
-interface~\cite{JoyIT_COMMSD}, enabling high-capacity storage
-independent of wireless connectivity.
-
-The system is powered by three lithium polymer (LiPo) cells of 250\,mAh
-each~\cite{LiPo250mAh}, connected in parallel to yield a total nominal
-capacity of 750\,mAh at 3.7\,V.
-Battery voltage is monitored continuously via an analog input pin, using a
-measured scaling factor of 1.73 to correct for the ADC input divider.
-
-\begin{figure}[h]
+\begin{figure}[ht]
   \centering
-  % TODO: replace with real photo — 05_figures/06_preliminary/prototype_exterior.jpg
-  \figplaceholder[6cm]{Photo of assembled prototype (exterior view). Replace with prototype\_exterior.jpg}
-  \caption{Assembled prototype — exterior view showing the prosthetic housing.}
-  \label{fig:prototype_exterior}
+  \begin{minipage}[t]{0.46\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{05_figures/06_preliminary/prototype_exterior}
+    \caption{Assembled instrumented prosthesis — exterior view. The USB-C
+             charging port and PetBionic branding are visible on the housing.}
+    \label{fig:prototype_exterior}
+  \end{minipage}
+  \hfill
+  \begin{minipage}[t]{0.50\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{05_figures/06_preliminary/prototype_interior}
+    \caption{Interior of the prosthetic housing showing the custom PCB with
+             the XIAO ESP32-C3 (centre), HX711 ADC (bottom), and wiring.}
+    \label{fig:prototype_interior}
+  \end{minipage}
 \end{figure}
-
-\begin{figure}[h]
-  \centering
-  % TODO: replace with real photo — 05_figures/06_preliminary/prototype_interior.jpg
-  \figplaceholder[6cm]{Photo of prototype interior showing ESP32-C3, MPU-9250, HX711, SD card and LiPo cells. Replace with prototype\_interior.jpg}
-  \caption{Prototype interior showing the embedded electronics.}
-  \label{fig:prototype_interior}
-\end{figure}
-
-\subsection{System Interconnection}
-
-The MPU-9250 and the microSD card share the same SPI bus, with independent
-chip-select lines assigned to each peripheral.
-The HX711 uses a dedicated two-wire serial interface (clock and data).
-The LiPo cells are connected in parallel and supply power to the
-microcontroller's onboard 3.3\,V low-dropout regulator.
-
-Table~\ref{tab:hw_components} summarises the main hardware components
-and their roles within the system.
 
 \begin{table}[h]
   \centering
@@ -97,351 +55,211 @@ and their roles within the system.
     \toprule
     \textbf{Component} & \textbf{Model} & \textbf{Interface} & \textbf{Role} \\
     \midrule
-    Microcontroller     & XIAO ESP32-C3        & ---   & Processing, storage, communication \\
-    IMU                 & MPU-9250 + AK8963    & SPI   & Acceleration, gyroscope, magnetometer \\
+    Microcontroller     & XIAO ESP32-C3        & ---    & Processing, storage, communication \\
+    IMU                 & MPU-9250 + AK8963    & SPI    & Accel, gyroscope, magnetometer \\
     Load cell ADC       & HX711                & 2-wire & Force digitisation (24-bit) \\
     Force sensor        & LCR02                & Analog & Inline axial force measurement \\
-    Storage             & MicroSD (SPI module) & SPI   & Local data storage \\
-    Battery             & LiPo 250\,mAh $\times$3 & --- & 750\,mAh @ 3.7\,V \\
+    Storage             & MicroSD (SPI module) & SPI    & Local data storage \\
+    Battery             & LiPo 250\,mAh × 2   & ---    & 500\,mAh @ 3.7\,V \\
     \bottomrule
   \end{tabular}
 \end{table}
 
 % ----------------------------------------------------------------------
-\section{Firmware Architecture}
-\label{section:fw_architecture}
+\section{Firmware and Data Pipeline}
+\label{section:firmware}
 
-The firmware was developed using the Arduino framework for ESP32 under
-PlatformIO, running on a single cooperative loop at a target acquisition
-rate of 80\,Hz, constrained by the HX711 output data rate.
+The firmware runs on the Arduino/PlatformIO framework at a target rate of
+80\,Hz (constrained by the HX711).
+Each sample cycle reads force and all nine IMU axes, applies a first-order
+low-pass filter to the force signal ($\alpha=0.2$), updates a
+quaternion-based complementary filter for orientation estimation
+($\alpha_\text{gyro}=0.97$), and appends the result to a CSV session file
+on the SD card.
 
-\subsection{Acquisition Pipeline}
+Each CSV row records: microsecond timestamp, wall-clock time (NTP-synced),
+battery voltage, raw and calibrated force (kg), the nine IMU axes, and
+estimated roll/pitch/yaw.
+Sessions are stored under a hierarchical directory structure
+(\texttt{/inbox/YYYYMMDD/}) with filenames encoding date, time, and run
+number for unambiguous identification.
 
-The main acquisition loop executes the following steps on each sample tick:
-\begin{enumerate}
-  \item Read raw force value from HX711 and convert to estimated weight (kg)
-      using the calibration factor $k = 18570.0$;
-  \item Read nine IMU axes (accelerometer, gyroscope, magnetometer) from the
-      MPU-9250 via SPI burst read;
-  \item Apply a first-order low-pass filter to the force signal
-      ($\alpha = 0.2$, configurable at runtime);
-  \item Update the orientation estimator with the new IMU sample;
-  \item Evaluate the event detector against the filtered force signal;
-  \item Write the complete sample to the active CSV session file on the SD card.
-\end{enumerate}
-
-Each CSV row contains the fields listed in Table~\ref{tab:csv_fields}.
-
-\begin{table}[h]
-  \centering
-  \caption{CSV data fields recorded per sample at 80\,Hz.}
-  \label{tab:csv_fields}
-  \begin{tabular}{lll}
-    \toprule
-    \textbf{Field} & \textbf{Unit} & \textbf{Description} \\
-    \midrule
-    \texttt{sample\_us}          & $\mu$s           & Microsecond timestamp (device clock) \\
-    \texttt{time\_of\_day}       & HH:MM:SS.mmm     & Local wall-clock time (NTP-synced) \\
-    \texttt{batt\_v}             & V                & Battery voltage at sample time \\
-    \texttt{load\_cell\_raw}     & counts           & Raw HX711 ADC value \\
-    \texttt{load\_cell\_est\_kg} & kg               & Calibrated force estimate \\
-    \texttt{imu\_ax/ay/az}       & raw              & Accelerometer axes (16-bit) \\
-    \texttt{imu\_gx/gy/gz}       & raw              & Gyroscope axes (16-bit) \\
-    \texttt{imu\_mx/my/mz}       & raw              & Magnetometer axes (16-bit) \\
-    \texttt{roll\_deg}           & \textdegree      & Estimated roll angle \\
-    \texttt{pitch\_deg}          & \textdegree      & Estimated pitch angle \\
-    \texttt{yaw\_deg}            & \textdegree      & Estimated yaw angle $[0, 360)$ \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-\subsection{Orientation Estimation}
-
-Orientation is estimated using a quaternion-based complementary filter that
-fuses gyroscope integration with an absolute reference derived from the
-accelerometer and magnetometer.
-The filter blends the gyroscope-propagated quaternion with the
-accel\,+\,mag reference at each sample step using a configurable
-blend factor ($\alpha_{\text{gyro}} = 0.97$), providing smooth and
-drift-resistant estimates.
-During fast rotations (gyroscope magnitude above a threshold), the
-accelerometer reference is discarded and the filter relies exclusively
-on gyroscope integration, avoiding errors from centripetal acceleration.
-Final Euler angles (roll, pitch, yaw) are extracted from the quaternion
-for storage and display.
-
-\subsection{Event Detection}
-
-A threshold-based event detector monitors the filtered force signal and
-triggers an event when the signal exceeds a configurable threshold,
-subject to a minimum inter-event cooldown period (default: 300\,ms).
-This mechanism is intended to detect ground contact events (stance phase
-onset) during locomotion.
-The event count is accumulated per session and reported in the system status.
-
-\subsection{Data Management}
-
-Session files are created on the SD card under a hierarchical directory
-structure (\texttt{/inbox/YYYYMMDD/}), with filenames encoding the
-date, time, and sequential run number for unambiguous identification.
-When Wi-Fi is available, the system synchronises the real-time clock
-via NTP before session creation, ensuring that filenames and
-\texttt{time\_of\_day} fields reflect accurate wall-clock time.
-Files are flushed to the SD card every 80 samples ($\approx$1\,s)
-to balance write overhead against data loss risk.
-
-\subsection{Communication Interfaces}
-
-Two complementary interfaces allow runtime control and data retrieval:
-
-\textbf{Web interface.}
-An HTTP server (port~80) serves a browser-accessible dashboard that
-displays live system status (battery voltage, estimated force, orientation
-angles, sensor health, and session statistics) updated via WebSocket at
-10\,Hz.
-The interface provides start/stop session controls and allows CSV files
-to be listed and downloaded directly from the SD card.
-
-\textbf{Serial debug interface.}
-A command-line interface over USB CDC serial (115\,200\,baud) exposes
-the following commands: \texttt{start}, \texttt{stop}, \texttt{status},
-\texttt{files}, \texttt{delete}, \texttt{delete-all}, \texttt{ssid},
-\texttt{wifi-on}, \texttt{wifi-off}, \texttt{wifi-reset},
-\texttt{reset}, \texttt{sleep}, and \texttt{wakeup}.
-Wi-Fi credentials modified via the \texttt{ssid} command are persisted
-to non-volatile storage (ESP32 NVS) and restored automatically on boot.
-A periodic heartbeat line is emitted every 5\,s to confirm device state
-without polluting the terminal.
+The system exposes a browser-accessible web interface (HTTP, port 80) with
+real-time status (force, orientation, battery, sample count) updated via
+WebSocket at 10\,Hz, as well as start/stop session controls and direct CSV
+download.
+Wi-Fi can be disabled at runtime to extend battery life during field
+acquisition.
 
 % ----------------------------------------------------------------------
 \section{Sensor Validation}
 \label{section:sensor_validation}
 
-Initial validation experiments were conducted to confirm correct sensor
-operation and assess measurement quality before proceeding to locomotion
-data collection.
+\subsection{System Boot and Peripheral Detection}
 
-\subsection{System Initialisation}
-
-The device was powered and the boot sequence was verified over the serial
-interface.
-All peripherals were detected and initialised successfully:
-the IMU reported \texttt{WHO\_AM\_I\,=\,0x73} (MPU-9250) and the AK8963
-magnetometer reported \texttt{WHO\_AM\_I\,=\,0x48};
-the HX711 and SD card also initialised without errors.
-Wi-Fi connected to the local access point and NTP time synchronisation
-completed within 5\,s of boot.
-
-\begin{figure}[h]
-  \centering
-  % TODO: replace with screenshot — 05_figures/06_preliminary/boot_serial.png
-  \figplaceholder[4cm]{Screenshot of serial monitor showing full successful boot sequence. Replace with boot\_serial.png}
-  \caption{Serial monitor output during system boot, confirming successful
-           initialisation of all peripherals.}
-  \label{fig:boot_serial}
-\end{figure}
+All peripherals initialised without errors on first power-up: the MPU-9250
+reported \texttt{WHO\_AM\_I\,=\,0x73}, the AK8963 magnetometer reported
+\texttt{WHO\_AM\_I\,=\,0x48}, and the HX711 and SD card also confirmed
+successful initialisation.
+Wi-Fi connected and NTP time synchronisation completed within 5\,s of boot.
 
 \subsection{Load Cell Calibration}
 
 The HX711 was calibrated by placing known reference weights on the load cell
 and recording the corresponding raw ADC output.
-The calibration factor $k = 18570.0$ (ADC counts per kilogram) was derived
-from this procedure and applied in firmware.
-The estimated weight $\hat{w}$ is computed as:
+The calibration factor $k = 18\,570$\,counts/kg was determined empirically
+and applied in firmware:
 \begin{equation}
   \hat{w} = \frac{r - r_0}{k}
   \label{eq:hx711_calib}
 \end{equation}
-where $r$ is the raw ADC reading and $r_0$ is the tare offset measured
-with no load applied.
+where $r$ is the raw ADC reading and $r_0$ is the zero-load tare offset.
+The calibration was verified by comparing the estimated weight against
+reference loads across the expected operating range.
 
-\begin{figure}[h]
+It should be noted that the current values of $r_0$ and $k$ are preliminary,
+obtained under informal bench conditions using a small number of reference
+points.
+This single-point approach does not account for potential non-linearity,
+temperature drift, or mechanical creep of the load cell, and is therefore
+insufficient for rigorous cross-session quantitative comparison.
+To address this limitation, a dedicated calibration rig is currently under
+construction. The instrument will allow controlled and repeatable application
+of certified reference loads across the full expected operating range,
+enabling a robust multi-point calibration curve to be established prior to
+the main data collection phase.
+Figure~\ref{fig:calib_rig} shows the calibration rig under preparation.
+
+\begin{figure}[ht]
   \centering
-  % TODO: replace with calibration curve — 05_figures/06_preliminary/load_cell_calibration.pdf
-  \figplaceholder[6cm]{Calibration curve: measured kg vs.\ reference weight. Points at 0, 0.5, 1.0, 2.0\,kg minimum. Replace with load\_cell\_calibration.pdf}
-  \caption{Load cell calibration curve. Points represent measured values;
-           the dashed line shows the ideal linear response
-           ($k = 18570.0$\,counts/kg,
-           RMSE\,=\,\textit{TODO}\,kg).}  % TODO: fill RMSE after experiment
-  \label{fig:load_cell_calib}
+  % TODO: replace with actual photo
+  % \includegraphics[width=0.75\linewidth]{05_figures/06_preliminary/calib_rig}
+  \fbox{\rule{0pt}{6cm}\rule{0.75\linewidth}{0pt}}
+  \caption{Calibration rig under construction for multi-point load cell
+           characterisation across the full operating force range.}
+  \label{fig:calib_rig}
 \end{figure}
 
-\subsection{IMU Orientation Validation}
+\subsection{Orientation Estimator}
 
-The orientation estimator was validated by placing the device in four
-known static orientations and comparing reported Euler angles against
-expected values.
-Table~\ref{tab:imu_static} summarises the results.
-
-\begin{table}[h]
-  \centering
-  \caption{IMU orientation validation — static positions.}
-  \label{tab:imu_static}
-  \begin{tabular}{lcccccc}
-    \toprule
-    & \multicolumn{3}{c}{\textbf{Expected (°)}}
-    & \multicolumn{3}{c}{\textbf{Measured (°)}} \\
-    \cmidrule(lr){2-4}\cmidrule(lr){5-7}
-    \textbf{Position} & Roll & Pitch & Yaw & Roll & Pitch & Yaw \\
-    \midrule
-    Flat (face up)       & $\approx 0$  & $\approx 0$  & --- & \textit{TODO} & \textit{TODO} & \textit{TODO} \\
-    Rotated 90° (roll)   & $\approx 90$ & $\approx 0$  & --- & \textit{TODO} & \textit{TODO} & \textit{TODO} \\
-    Tilted 90° (pitch)   & $\approx 0$  & $\approx 90$ & --- & \textit{TODO} & \textit{TODO} & \textit{TODO} \\
-    Inverted (face down) & $\approx 180$& $\approx 0$  & --- & \textit{TODO} & \textit{TODO} & \textit{TODO} \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-% TODO: fill measured values from \texttt{status} command in each position (Ensaio A3)
+The complementary filter was verified by placing the device in known static
+orientations and confirming that the reported Euler angles (roll, pitch, yaw)
+matched the expected values.
+Dynamic tracking was assessed by moving the device through controlled
+rotations; the filter converged within 1--2\,s of motion onset and tracked
+attitude smoothly without observable drift over sessions of several minutes.
 
 % ----------------------------------------------------------------------
-\section{System Functionality Validation}
-\label{section:system_validation}
-
-\subsection{Session Recording}
-
-A complete acquisition session was initiated and terminated using both
-the web interface and the serial command interface.
-In both cases the firmware created a correctly named session file on the
-SD card (e.g.\ \texttt{/inbox/20260524/raw\_log\_run001\_20260524\_145009.csv}),
-populated the CSV header, and accumulated samples at the target 80\,Hz rate.
-At session end, the firmware reported the total number of recorded samples.
-
-\begin{figure}[h]
-  \centering
-  % TODO: replace with screenshot — 05_figures/06_preliminary/webui_screenshot.png
-  \figplaceholder[6cm]{Screenshot of web dashboard during active session, showing live battery, kg, roll/pitch/yaw, sample count. Replace with webui\_screenshot.png}
-  \caption{Web interface dashboard showing real-time system status during
-           an active acquisition session.}
-  \label{fig:webui}
-\end{figure}
-
-\subsection{Serial Debug Interface}
-
-The serial command interface was verified by issuing each available command
-and confirming the expected response.
-Figure~\ref{fig:serial_status} shows the output of the \texttt{status}
-command, which reports all monitored variables in human-readable form.
-
-\begin{figure}[h]
-  \centering
-  % TODO: replace with screenshot — 05_figures/06_preliminary/serial_status.png
-  \figplaceholder[5cm]{Screenshot of serial monitor showing \texttt{status} command output. Replace with serial\_status.png}
-  \caption{Serial interface \texttt{status} command output confirming all
-           monitored system variables.}
-  \label{fig:serial_status}
-\end{figure}
-
-% ----------------------------------------------------------------------
-\section{Preliminary Data Acquisition}
+\section{Preliminary Data Collection}
 \label{section:preliminary_data}
 
-Initial data collection experiments were conducted to verify the feasibility
-of the proposed sensing approach and to characterise signal quality.
+\subsection{Data Collection Sessions}
 
-\subsection{Impact Detection}
+An initial field session was conducted on 28 May 2026 with the prototype
+fitted to a canine subject, comprising 11 acquisition runs following a
+warm-up period.
+This session confirmed correct system operation under real conditions and
+provided a first dataset for signal characterisation.
+Data collection was carried out in collaboration with the Hospital
+Veterinário de Lisboa (São Bento), whose clinical team provided access to
+real canine patients fitted with prosthetic devices and assisted with animal
+handling during the acquisition sessions.
+The physical construction of the instrumented prosthesis and the calibration
+rig was supported by Composites Kingdom, who contributed materials expertise
+and fabrication assistance.
 
-Rhythmic impacts were applied to the load cell to simulate the impulsive
-force profile of a ground contact event.
-The event detector successfully identified each impact, confirmed by the
-incrementing event counter in the system status.
-Figure~\ref{fig:impact_detection} shows the filtered force signal with
-detected event markers overlaid.
+Each run consists of a continuous recording at 80\,Hz, with individual
+runs lasting between 30 and 180\,s.
 
-\begin{figure}[h]
+\subsection{Signal Characteristics}
+
+The acquired signals exhibit clear and reproducible characteristics consistent
+with the expected biomechanics of locomotion.
+The force channel shows distinct periodic peaks corresponding to ground
+contact events, with a regular inter-peak interval reflecting stride duration.
+The accelerometer vertical axis captures the characteristic profile of the
+stance phase, while the roll and pitch channels reflect prosthesis orientation
+dynamics during the gait cycle.
+
+The periodic structure of gait is clearly visible in both the force and
+inertial channels, confirming that the system captures the essential temporal
+features of a locomotion cycle under real conditions.
+
+Figure~\ref{fig:signal_overview} shows the force and vertical acceleration
+signals recorded during a representative walking session, with the
+characteristic periodic pattern of the gait cycle clearly present in
+both channels.
+Figure~\ref{fig:signal_imu} shows the orientation angles estimated by the
+complementary filter during the same session.
+
+The Euler angles are presented in \textit{unwrapped} form: instead of
+resetting to the $[0°, 360°)$ range when a boundary is crossed, the
+angle accumulates continuously (e.g.\ $359° \rightarrow 361° \rightarrow 362°$).
+This eliminates the artificial discontinuities that would otherwise appear
+as large instantaneous jumps in the plotted curves.
+As a consequence, a complete $360°$ rotation by the animal results in a
+net accumulated offset rather than a return to the initial value ---
+which is the physically correct representation of total angular displacement.
+
+\begin{figure}[ht]
   \centering
-  % TODO: replace with Python plot — 05_figures/06_preliminary/impact_detection.pdf
-  \figplaceholder[6cm]{Plot: filtered load cell (kg) vs.\ time (s) with vertical event markers. Replace with impact\_detection.pdf}
-  \caption{Filtered force signal during rhythmic impact test.
-           Vertical markers indicate automatically detected ground contact events.}
-  \label{fig:impact_detection}
+  \includegraphics[width=0.95\linewidth]{05_figures/06_preliminary/signal_overview}
+  \caption{Force (top) and vertical acceleration $a_z$ (bottom) recorded
+           during a canine walking session (run~9, 28 May 2026).
+           The periodic structure of the gait cycle is clearly visible in
+           both channels throughout the session, which includes a straight
+           walking segment and a return pass after a turn.}
+  \label{fig:signal_overview}
 \end{figure}
 
-\subsection{Motion and Orientation Signals}
-
-The device was held by hand during a controlled motion sequence to
-characterise inertial signal quality and orientation tracking behaviour.
-Figure~\ref{fig:imu_motion} shows the accelerometer and orientation
-signals recorded during the experiment.
-The orientation estimator converged quickly after motion onset and
-tracked the device attitude smoothly without observable drift over the
-duration of the test.
-
-\begin{figure}[h]
+\begin{figure}[ht]
   \centering
-  % TODO: replace with Python plot — 05_figures/06_preliminary/imu_motion.pdf
-  \figplaceholder[8cm]{Three-panel plot: (top) ax/ay/az vs.\ time; (middle) roll/pitch/yaw vs.\ time; (bottom) load cell kg vs.\ time. Replace with imu\_motion.pdf}
-  \caption{Inertial and orientation signals during a hand-held motion
-           sequence. Top: accelerometer axes. Middle: estimated orientation
-           angles. Bottom: load cell signal.}
-  \label{fig:imu_motion}
+  \includegraphics[width=0.95\linewidth]{05_figures/06_preliminary/signal_imu}
+  \caption{Vertical acceleration (top) and estimated roll, pitch and yaw
+           angles (bottom, yaw unwrapped) during the same canine walking
+           session. The yaw trend reflects the directional change during
+           the turn; roll and pitch capture the prosthesis tilt dynamics
+           at stride frequency.}
+  \label{fig:signal_imu}
 \end{figure}
 
-\subsection{Simulated Gait Acquisition}
+\subsection{Data Quality and Firmware Correction}
 
-To evaluate the system under conditions representative of its intended use,
-the device was attached to the lower leg and a walking sequence of
-approximately 30\,s was recorded.
-Figure~\ref{fig:simulated_gait} shows the resulting signals, in which the
-periodic structure of the gait cycle is clearly visible in both the load
-cell and accelerometer channels.
-The regular periodicity of the force peaks and the corresponding
-acceleration pattern confirm that the system can capture the essential
-temporal features of a locomotion cycle.
-
-\begin{figure}[h]
-  \centering
-  % TODO: replace with Python plot — 05_figures/06_preliminary/simulated_gait.pdf
-  \figplaceholder[7cm]{Two-panel plot: (top) load\_cell\_est\_kg vs.\ time; (bottom) imu\_az vs.\ time. Walking session ~30\,s, periodic gait pattern clearly visible. Replace with simulated\_gait.pdf}
-  \caption{Force and vertical acceleration signals recorded during a
-           simulated gait session (device attached to lower leg, flat
-           surface walking). The periodic structure of the gait cycle
-           is visible in both channels.}
-  \label{fig:simulated_gait}
-\end{figure}
-
-\subsection{Signal Quality Assessment}
-
-% TODO: fill in values after running experiments and analysing CSVs
-The acquired signals exhibit the following characteristics:
-\begin{itemize}
-  \item Effective sampling rate: 80\,Hz, confirmed by inter-sample
-      interval of $12{,}500\,\mu$s\,$\pm$\,\textit{TODO}\,$\mu$s (jitter);
-  \item Load cell noise floor (no load, static):
-      \textit{TODO}\,kg RMS;
-  \item Accelerometer noise (static, flat):
-      \textit{TODO}\,$g$ RMS per axis;
-  \item Orientation drift (static, 60\,s):
-      roll\,\textit{TODO}°, pitch\,\textit{TODO}°.
-\end{itemize}
+Post-processing of the acquired runs identified a firmware bug present in an
+earlier software version: a redundant blocking read caused the force estimate
+to freeze for up to 20 consecutive samples, and a timeout path produced
+spurious raw ADC values near 2\,500 counts.
+Both issues have been corrected in the current firmware.
+The affected sessions were cleaned using a post-processing script that removes
+spurious samples (approximately 21\% of the raw total) and recomputes the
+force estimate per sample from the raw ADC value using
+Equation~\ref{eq:hx711_calib}.
+The corrected dataset forms the basis for subsequent feature extraction and
+model development.
 
 % ----------------------------------------------------------------------
+\clearpage
 \section{Current Limitations}
 \label{section:current_limitations}
 
-The current prototype presents several limitations that will be addressed
-in subsequent development phases.
+The current prototype presents several limitations to be addressed in
+subsequent phases.
 
-\textbf{Load cell calibration.}
-The calibration factor was determined from a limited set of reference
-measurements.
-A formal multi-point calibration against certified weights, covering the
-full expected force range, is required before quantitative comparison
-across sessions or animals.
+\textbf{Dataset.}
+The preliminary dataset consists of a single informal field session.
+Structured acquisition campaigns with multiple canine subjects and sessions
+are required to build a dataset suitable for model training and validation.
 
-\textbf{IMU placement sensitivity.}
-Orientation and force estimates are sensitive to sensor placement and
-orientation within the prosthetic housing.
-A mechanical fixture ensuring repeatable positioning across sessions has
-not yet been implemented.
-
-\textbf{Dataset size.}
-Data collected to date is limited to bench and simulated gait experiments.
-Acquisition sessions with a canine subject are required to characterise
-the actual signal environment and to validate the proposed biomechanical
-metrics under real operating conditions.
+\textbf{IMU mounting calibration.}
+The sensor is mounted in an arbitrary orientation within the prosthetic
+housing.
+A rotation matrix aligning the sensor frame with the prosthetic anatomical
+frame has been derived, but integration into the main firmware is pending.
 
 \textbf{Power autonomy.}
-The estimated autonomy of 6--8\,h in Wi-Fi-connected mode
-(100--175\,mA average) and 12--16\,h without Wi-Fi
-(35--55\,mA) has not yet been validated through a full discharge cycle.
-This measurement is planned as part of the next development phase.
+Estimated autonomy figures are based on measured current draw; validation
+through a full discharge cycle is planned.
+
+\textbf{Load cell calibration range.}
+A formal multi-point calibration against certified weights across the full
+expected force range is planned before quantitative cross-session comparison.

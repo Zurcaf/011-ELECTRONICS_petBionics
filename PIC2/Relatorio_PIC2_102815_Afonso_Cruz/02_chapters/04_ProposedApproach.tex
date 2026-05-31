@@ -2,46 +2,118 @@
 
 \section{System Overview}
 
-The proposed system consists of an instrumented canine prosthesis designed to acquire biomechanical data during locomotion in real-world conditions. The system integrates inertial and force sensing, embedded processing, and local data storage into a compact and low-power architecture. Unlike traditional gait analysis systems based on force plates or motion capture, which require controlled environments and specialized equipment, this approach enables continuous and unobtrusive monitoring during normal animal activity \cite{McLaughlin2001}. The system is therefore designed with a strong emphasis on portability, energy efficiency, and long-term data acquisition.
+The proposed system consists of an instrumented canine prosthesis designed to
+acquire biomechanical data during locomotion in real-world conditions.
+The system integrates inertial and force sensing, embedded processing, and
+local data storage into a compact and low-power architecture.
+
+Unlike traditional gait analysis systems based on force plates or motion
+capture, which require controlled environments and specialised equipment, this
+approach enables continuous and unobtrusive monitoring during normal animal
+activity~\cite{McLaughlin2001}.
+The system is therefore designed with a strong emphasis on portability, energy
+efficiency, and long-term data acquisition.
 
 \section{Instrumented Prosthesis Concept}
 
-The prosthesis acts simultaneously as a mobility aid and as a sensing platform. Sensors are embedded within the prosthetic structure, enabling continuous data acquisition without altering the natural gait of the animal. This approach addresses a key limitation in current veterinary practice, where prosthesis evaluation is largely based on subjective observation and owner feedback \cite{Wendland2019,Rosen2022}. By embedding sensing capabilities directly into the prosthesis, the system enables objective and repeatable assessment of prosthetic adaptation.
+The prosthesis acts simultaneously as a mobility aid and as a sensing platform.
+Sensors are embedded within the prosthetic structure, enabling continuous data
+acquisition without altering the natural gait of the animal.
+
+By embedding sensing capabilities directly into the prosthesis, the system
+enables the objective and repeatable assessment of prosthetic adaptation
+identified as missing in Chapter~\ref{chapter:background}.
+
+A notable advantage of this design is that all sensing components are entirely
+non-invasive and external to the animal: no electrodes, pressure cuffs, or
+skin-contact sensors are required. The instrumentation is confined to the
+prosthetic device itself, significantly simplifying clinical deployment and
+reducing implementation cost compared to approaches that require attaching
+sensors directly to the animal's body.
 
 \section{Sensor Integration}
 
-The sensing architecture combines an inertial measurement unit (IMU), specifically the MPU-9250, with a load sensing chain composed of an inline load cell (LCR02) and an HX711 analog-to-digital converter. The IMU provides tri-axial acceleration and angular velocity measurements, enabling the extraction of temporal gait parameters such as stride segmentation and stance and swing phases. Wearable IMU-based systems have been shown to provide accurate gait characterization while maintaining portability \cite{Jenkins2018,Zhang2022,Hayati2019}. The selected IMU integrates accelerometer, gyroscope, and magnetometer in a single package, simplifying hardware integration while providing sufficient measurement range for locomotion analysis \cite{MPU9250}.
+The sensing architecture combines an inertial measurement unit (IMU),
+specifically the MPU-9250, with a load sensing chain composed of an inline
+load cell (LCR02) and an HX711 24-bit analog-to-digital converter.
 
-The load cell enables direct measurement of axial forces transmitted through the prosthesis. This is critical for assessing weight-bearing behavior and prosthesis acceptance, as ground reaction forces are a key metric in kinetic gait analysis \cite{McLaughlin2001,Budsberg1996}. The combination of kinematic and kinetic sensing provides a more complete biomechanical characterization of locomotion than either modality alone.
+The IMU provides tri-axial acceleration, angular velocity, and magnetometer
+measurements, enabling the extraction of temporal gait parameters such as
+stride segmentation and stance and swing phases.
+Wearable IMU-based systems have been shown to provide accurate gait
+characterisation while maintaining portability~\cite{Jenkins2018,Zhang2022}.
 
-\subsection{Sampling Considerations}
+The load cell enables direct measurement of axial forces transmitted through
+the prosthesis, which is critical for assessing weight-bearing behaviour and
+prosthesis acceptance~\cite{McLaughlin2001,Budsberg1996}.
+The combination of kinematic and kinetic sensing provides a more complete
+biomechanical characterisation than either modality alone.
 
-The system sampling strategy is constrained by the characteristics of the sensing chain. While IMUs typically support high sampling rates, the HX711 ADC limits the effective acquisition rate to approximately 80 Hz \cite{HX711}. This limitation is acceptable for the target application, as canine gait dynamics occur at significantly lower frequencies. Reported stride frequencies are typically on the order of a few Hz, meaning that an acquisition rate of 80 Hz is sufficient to capture relevant temporal gait features \cite{Hayati2019,Jenkins2018}. The selected sampling rate therefore represents a trade-off between signal fidelity, power consumption, and data storage requirements.
+The system sampling rate is 80\,Hz, constrained by the HX711 output data rate.
+This is sufficient for the target application, as canine stride frequencies are
+typically 2--4\,Hz~\cite{Hayati2019,Jenkins2018}, providing more than 20
+samples per gait cycle.
 
 \section{Embedded System Architecture}
 
-The system is built around the Seeed Studio XIAO ESP32-C3 microcontroller, selected for its integration of wireless communication (Wi-Fi and BLE), low power operation, and compact form factor \cite{ESP32C3}. The architecture follows a local-first data acquisition strategy, in which data is continuously acquired and stored locally, and only transmitted intermittently via wireless communication. This approach avoids the high energy cost associated with continuous data transmission and is consistent with best practices in wearable sensing systems \cite{Wang2019,Bulling2014}. It also ensures robustness in scenarios where connectivity is intermittent or unavailable.
+The system is built around the Seeed Studio XIAO ESP32-C3 microcontroller,
+selected for its integration of wireless communication (Wi-Fi and BLE), low
+power operation, and compact form factor~\cite{ESP32C3}.
 
-\section{Data Storage}
+The architecture follows a local-first data acquisition strategy: data is
+continuously acquired and stored locally on a microSD card, and only
+transferred via wireless communication when explicitly requested.
+This avoids the high energy cost of continuous data transmission and ensures
+robustness when connectivity is intermittent~\cite{Wang2019,Bulling2014}.
 
-Data is stored locally using a microSD card interfaced via SPI, enabling high-capacity storage with minimal system complexity. Given the sampling rate and number of sensing channels, the system generates a significant volume of data during operation. Local storage ensures that data acquisition is not constrained by communication bandwidth and allows for post-processing using more advanced analysis techniques. Similar approaches are commonly used in wearable sensing applications to decouple data acquisition from transmission constraints \cite{Wang2019}.
+The system operates in two primary modes:
+(i)~\textbf{acquisition mode}, in which sensors are active and data is
+stored locally with wireless communication disabled, for minimal power
+consumption; and
+(ii)~\textbf{transfer mode}, in which Wi-Fi is enabled for data offloading
+via a browser-accessible web interface.
 
-\section{Power System Design}
-
-The system is powered using three lithium polymer (LiPo) cells connected in parallel, each with a nominal capacity of 250 mAh, resulting in a total effective capacity of approximately 750 mAh \cite{LiPo250mAh}. This configuration was selected to increase total energy capacity while maintaining voltage compatibility with the embedded system, as parallel connection preserves nominal voltage while increasing available capacity. Additionally, this solution satisfies the geometric constraints imposed by the prosthesis while providing sufficient autonomy for extended acquisition sessions.
-
-\subsection{Power Consumption and Autonomy Analysis}
-
-The system operates in two primary modes: a data acquisition mode, in which sensors are active, data is processed and stored locally, and wireless communication is disabled; and a data transmission mode, in which Wi-Fi is enabled to transfer stored data. The acquisition mode represents the dominant operational state and is optimized for low power consumption, while the transmission mode occurs intermittently and introduces a temporary increase in power demand due to wireless communication.
-
-\textbf{[To be added]}: A detailed energy consumption model will be developed to estimate system autonomy based on measured current draw in each operating mode. This analysis will define the maximum achievable data acquisition duration per charge cycle and evaluate trade-offs between sampling rate, storage requirements, and transmission frequency.
-
-\textbf{[To be added]}: The maximum continuous data acquisition duration will also be quantified based on memory capacity and data generation rate, enabling estimation of the maximum monitoring time before data offloading is required.
+The power system uses two 250\,mAh LiPo cells in parallel (500\,mAh total
+at 3.7\,V)~\cite{LiPo250mAh}, providing an estimated autonomy of approximately
+12--16\,h in acquisition mode (35--55\,mA) and 6--8\,h with Wi-Fi active
+(100--175\,mA).
 
 \section{Single-Limb Instrumentation Strategy}
 
-The system adopts a single-limb instrumentation strategy, embedding sensing capabilities exclusively within the prosthetic limb. This design significantly reduces system complexity, cost, and intrusiveness, while still enabling extraction of meaningful gait parameters. Previous studies have demonstrated that limb-mounted IMUs can accurately capture temporal gait features such as stride timing and phase transitions \cite{Jenkins2018,Trojaniello2014}. Although multi-limb systems provide a more complete representation of gait, they are less practical for real-world deployment. The proposed approach prioritizes scalability and usability, particularly for long-term monitoring across multiple animals \cite{Zhang2022}.
+The current implementation adopts a single-limb instrumentation strategy,
+embedding sensing capabilities exclusively within the prosthetic limb.
+This design significantly reduces system complexity, cost, and intrusiveness,
+while still enabling extraction of meaningful gait parameters.
+
+Previous studies have demonstrated that limb-mounted IMUs can accurately
+capture temporal gait features such as stride timing and phase
+transitions~\cite{Jenkins2018,Trojaniello2014}.
+The proposed approach prioritises scalability and usability, particularly for
+long-term monitoring~\cite{Zhang2022}.
+
+While single-limb instrumentation is sufficient to characterise the behaviour
+of the prosthetic limb in isolation, extending the system with additional IMUs
+on the remaining limbs would enable inter-limb coordination analysis and a more
+complete characterisation of whole-body gait.
+This multi-limb extension is considered a natural evolution of the proposed
+architecture and is planned for a future development phase.
 
 \section{Expected Contribution}
 
-The proposed system provides a portable and objective method for evaluating prosthetic adaptation in canine patients. By combining embedded sensing, local data acquisition, and post-processing, the system enables a transition from subjective assessment methods to quantitative and repeatable metrics. The main contributions include continuous monitoring in real-world conditions, integration of kinematic and kinetic sensing in a single embedded device, a scalable single-limb instrumentation approach, and an energy-efficient architecture suitable for long-term operation.
+The proposed system provides a portable and objective method for evaluating
+prosthetic adaptation in canine patients.
+By combining embedded sensing, local data acquisition, and post-processing,
+the system enables a transition from subjective assessment methods to
+quantitative and repeatable metrics.
+
+The main contributions are:
+\begin{itemize}
+  \item Continuous kinematic and kinetic monitoring in real-world conditions;
+  \item Integration of IMU and force sensing in a single compact device
+        embedded within the prosthesis;
+  \item A fully non-invasive design requiring no sensors on the animal's body,
+        simplifying clinical deployment and reducing implementation cost;
+  \item A single-limb instrumentation strategy extensible to multi-limb
+        configurations for whole-body gait analysis;
+  \item An energy-efficient architecture suitable for extended monitoring sessions.
+\end{itemize}
