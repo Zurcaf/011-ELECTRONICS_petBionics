@@ -1,0 +1,49 @@
+\documentclass[10pt,a4paper,oneside]{report}
+
+\input{04_config/Thesis_Preamble}
+
+\begin{document}
+
+\pagestyle{plain}
+\pagenumbering{roman}
+
+\input{01_frontmatter/FrontCover}
+
+\input{01_frontmatter/Abstract}
+
+\tableofcontents
+
+% ----------------------------------------------------------------------
+% Main matter
+% ----------------------------------------------------------------------
+
+\setcounter{page}{1}
+\pagenumbering{arabic}
+
+\input{02_chapters/01_Introduction}
+
+\input{02_chapters/02_Background}
+
+\input{02_chapters/03_StateOfTheProblem}
+
+\input{02_chapters/04_ProposedApproach}
+
+\input{02_chapters/05_Methodology}
+
+\input{02_chapters/06_PreliminaryWork}
+
+\input{02_chapters/07_WorkPlan}
+
+\input{02_chapters/08_Conclusions}
+
+% ----------------------------------------------------------------------
+% Bibliography
+% ----------------------------------------------------------------------
+
+\phantomsection
+\addcontentsline{toc}{chapter}{\bibname}
+
+\bibliographystyle{03_bib/abbrvunsrtnat}
+\bibliography{03_bib/Thesis_Bibliography_DB}
+
+\end{document}

@@ -76,5 +76,20 @@ analysis/.venv/
 analysis/__pycache__/
 analysis/**/__pycache__/
 
+# --- LaTeX compiled outputs ---
+PIC2/**/*.aux
+PIC2/**/*.bbl
+PIC2/**/*.blg
+PIC2/**/*.brf
+PIC2/**/*.fdb_latexmk
+PIC2/**/*.fls
+PIC2/**/*.lof
+PIC2/**/*.lot
+PIC2/**/*.toc
+PIC2/**/*.synctex.gz
+PIC2/**/*.pdf
+PIC2/**/.latexmkrc
+PIC2/**/*.latexmkrc
+
 # --- Keep project assets by default ---
 # (Production gerbers, BOMs, docs, source code remain tracked)
