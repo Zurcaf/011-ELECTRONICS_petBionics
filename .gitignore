@@ -76,6 +76,10 @@ analysis/.venv/
 analysis/__pycache__/
 analysis/**/__pycache__/
 
+# --- Local persisted state from the analyzer (per-machine, not in repo) ---
+analysis/imu_calibration_R.json
+analysis/model_orientation.json
+
 # --- LaTeX compiled outputs ---
 PIC2/**/*.aux
 PIC2/**/*.bbl
