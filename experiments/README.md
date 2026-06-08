@@ -41,7 +41,7 @@ Testa a célula de carga isoladamente.
 
 ```bash
 # Flash e monitoriza
-platformio run -t upload -e seeed_xiao_esp32c3 -d firmware/arduino-experiments/sensors/teste_loadcell/
+platformio run -t upload -e seeed_xiao_esp32c3 -d experiments/sensors/teste_loadcell/
 ```
 
 **Output esperado:**
@@ -226,7 +226,7 @@ A5 = GPIO5
 
 ```bash
 # Coloca-te na pasta do sketch que queres testar
-cd firmware/arduino-experiments/sensors/teste_loadcell/
+cd experiments/sensors/teste_loadcell/
 
 # Flash + Serial Monitor (115200 baud)
 platformio run -t upload -e seeed_xiao_esp32c3
@@ -239,6 +239,5 @@ pio device monitor -b 115200
 
 ## 📚 Leitura Complementar
 
-- `../platformio_petBionics/src/sensors/RawSensor.cpp` — implementação final de sensores no firmware principal
-- `../../analysis/README.md` — como visualizar os dados recolhidos
+- `../src/sensors/RawSensor.cpp` — implementação final de sensores no firmware principal
 - `./sensors/imu_mounting_cal/README.md` — calibração de montagem do IMU em detalhe
